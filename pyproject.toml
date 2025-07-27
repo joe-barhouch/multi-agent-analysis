@@ -1,0 +1,30 @@
+[project]
+name = "MultiAgent"
+version = "0.1.0"
+description = "Multi Agent BI analysis"
+authors = [
+    {name = "Joe Barhouch", email = "joe.barhouch@gmail.com"}
+]
+requires-python = ">=3.12"
+
+dependencies = [
+    "langgraph",
+    "langchain-openai",
+    "langchain-anthropic",
+    "python-dotenv",
+    "langchain-community>=0.3.27",
+    "langchain-mcp-adapters>=0.1.9",
+    "mcp[cli]>=1.12.2",
+    "sqlalchemy>=2.0.41",
+    "langchain-sandbox>=0.0.6",
+    "langgraph-supervisor>=0.0.28",
+    "streamlit>=1.47.1",
+    "yfinance>=0.2.65",
+    "pysqlite3>=0.5.4",
+    "rich>=13.0.0",
+    "ruff>=0.12.5",
+    "langgraph-checkpoint-sqlite>=2.0.0",
+]
+
+[tool.setuptools]
+packages = ["src"]
