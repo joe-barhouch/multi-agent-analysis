@@ -74,15 +74,23 @@ A multi-agent system for financial data analysis with supervisor coordination, q
 ### 2025-07-27: Real-Time Streaming Implementation
 - **Status**: 🚧 In Progress
 - **Goal**: Add streaming responses for real-time agent output and better user experience
-- **Features Planned**:
-  - [ ] Streaming response support using LangChain's streaming capabilities
-  - [ ] Real-time agent progress visualization with Rich live updates
-  - [ ] Live token counting and cost tracking during streaming
-  - [ ] Buffered streaming output with agent handoff indicators
-  - [ ] Streaming error handling and graceful degradation
-  - [ ] CLI progress bars and spinners for agent operations
-  - [ ] Live conversation history updates during streaming
-  - [ ] Stream interruption and cancellation support
+- **Implementation Plan**:
+  - [ ] Create streaming infrastructure (`src/core/streaming.py`)
+  - [ ] Add streaming state fields to `GlobalState` and `MessagesState`
+  - [ ] Update supervisor agent to use `astream()` instead of `ainvoke()`
+  - [ ] Enhance CLI with Rich live displays and progress visualization
+  - [ ] Implement multiple stream modes: `messages`, `updates`, `values`, `debug`
+  - [ ] Add real-time token counting and cost tracking during streaming
+  - [ ] Create buffered streaming output with agent handoff indicators
+  - [ ] Implement streaming error handling and graceful degradation
+  - [ ] Add CLI progress bars and spinners for agent operations
+  - [ ] Enable live conversation history updates during streaming
+  - [ ] Support stream interruption and cancellation (Ctrl+C)
+- **Technical Details**:
+  - **Stream Modes**: LangGraph supports `values`, `updates`, `custom`, `messages`, `debug`
+  - **Rich Integration**: `rich.live.Live` for real-time terminal updates
+  - **Buffer Management**: Handle streaming chunks and format appropriately
+  - **Fallback Strategy**: Gracefully degrade to non-streaming if errors occur
 
 ### Standard Test Query
 - **Default Query**: `explore financial_data.db`

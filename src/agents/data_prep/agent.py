@@ -1,16 +1,20 @@
 """Data Prep Agent."""
 
 from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
+from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langchain_sandbox import PyodideSandboxTool
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.prebuilt import create_react_agent
 
 from src.agents.data_manager import DataManager
-from src.core.models import AgentResult
-from src.core.types import AgentType
 from src.core.base_agent import BaseAgent
+from src.core.models import AgentResult
 from src.core.state import GlobalState
+from src.core.types import AgentType
+
+from .prompts import DATA_PREP_PROMPT
 
 
 class DataPrepAgent(BaseAgent):
@@ -77,11 +81,24 @@ class DataPrepAgent(BaseAgent):
             stateful=True,
         )
 
+        # Tool descriptions
+        tool_info = (
+            "\n".join(
+                f"<tool>{tool.name}: {tool.description}</tool>" for tool in sqlite_tools
+            )
+            + f"<tool>{sandbox_tool.name}: {sandbox_tool.description}</tool>"
+        )
+        breakpoint()
+
         self.workflow = create_react_agent(
             model=model,
             tools=[*sqlite_tools, sandbox_tool],
-            # prompt=DATA_PREP_PROMPT.format(),
+            prompt=DATA_PREP_PROMPT.format(
+                TOOLS=tool_info,
+                DATA_SOURCES="Sources",
+            ),
             name=self.name,
+            checkpointer=InMemorySaver(),  # Use in-memory saver for simplicity
         )
         self.log_activity("Creating workflow for data preparation tasks.")
 
@@ -114,10 +131,10 @@ class DataPrepAgent(BaseAgent):
             )
 
         # Call the workflow with proper message format
-        from langchain_core.messages import HumanMessage
 
         response = await self.workflow.ainvoke(
-            {"messages": [HumanMessage(content=query)]}
+            {"messages": [HumanMessage(content=query)]},
+            config=self.config,
         )
 
         return AgentResult(

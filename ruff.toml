@@ -24,6 +24,9 @@ exclude = [
     "src-back",
 ]
 
+# Disable E501
+extend-ignore = ["E501"]
+
 # Same as Black.
 line-length = 88
 indent-width = 4

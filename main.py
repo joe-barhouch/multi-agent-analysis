@@ -17,6 +17,7 @@ from rich.tree import Tree
 
 from src.agents.data_manager import DataManager
 from src.agents.supervisor.agent import Supervisor
+from src.core import GlobalState
 from src.core.base_agent import BaseAgent
 
 load_dotenv()
@@ -406,7 +407,6 @@ async def process_query(
 
         if verbose:
             import traceback
-
             print(f"🔧 Full traceback:\n{traceback.format_exc()}")
         return False, None
 
@@ -437,28 +437,29 @@ async def main(verbose=False):
     # Persistent conversation history for this session
     conversation_history: list[BaseMessage] = []
 
-    # Create minimal global state template
-    def create_global_state(query):
-        return {
-            "user_query": query,
-            "session_id": session_id,
-            "conversation_history": conversation_history,
-            "max_messages": 20,  # Keep last 20 messages
-            "enable_trimming": True,
-            "interpreted_query": None,
-            "todo_plan": [],
-            "current_task": None,
-            "dashboard_layout": {},
-            "widget_specs": {},
-            "widget_data_queries": {},
-            "available_tables": [],
-            "created_subtables": [],
-            "data_descriptions": {},
-            "errors": [],
-            "warnings": [],
-            "current_agent": None,
-            "agent_history": [],
-        }
+    # Create minimal global state template using proper GlobalState TypedDict
+    def create_global_state(query) -> GlobalState:
+        return GlobalState(
+            user_query=query,
+            session_id=session_id,
+            conversation_history=conversation_history,
+            max_messages=20,  # Keep last 20 messages
+            enable_trimming=True,
+            interpreted_query=None,
+            todo_plan=[],
+            current_task=None,
+            dashboard_layout={},
+            widget_specs={},
+            widget_data_queries={},
+            available_tables=[],
+            created_subtables=[],
+            data_descriptions={},
+            errors=[],
+            warnings=[],
+            current_agent=None,
+            agent_history=[],
+        )
+
 
     print("\n🚀 System ready! Type your queries below.")
     print("💡 Type 'exit', 'quit', or press Ctrl+C to stop.")
@@ -519,7 +520,6 @@ async def main(verbose=False):
                 )
 
             print("\n" + "=" * 60)
-            print(ai_response or "No response generated.")
 
         except KeyboardInterrupt:
             print("\n\n⛔ Interrupted by user. Shutting down...")

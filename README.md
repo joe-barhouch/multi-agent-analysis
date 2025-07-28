@@ -5,6 +5,7 @@
 - Claude code SDK github https://github.com/anthropics/claude-code-sdk-python
 - Langgraph multi agent: https://github.com/anthropics/claude-code-sdk-python
 - Langgraph guides doc: https://langchain-ai.github.io/langgraph/guides/
+- Langgraph streaming https://langchain-ai.github.io/langgraph/how-tos/streaming/#supported-stream-modes
   
 
 ## Overview

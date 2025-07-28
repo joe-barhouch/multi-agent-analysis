@@ -8,10 +8,10 @@ from langgraph.prebuilt import create_react_agent
 
 from src.agents.interpreter.models import QueryInterpretation
 from src.agents.interpreter.prompts import INTERPRETER_PROMPT
-from src.core.models import AgentResult
-from src.core.types import AgentType
 from src.core.base_agent import BaseAgent
+from src.core.models import AgentResult
 from src.core.state import GlobalState
+from src.core.types import AgentType
 
 
 class InterpreterAgent(BaseAgent):

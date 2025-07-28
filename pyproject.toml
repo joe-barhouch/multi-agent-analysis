@@ -24,6 +24,14 @@ dependencies = [
     "rich>=13.0.0",
     "ruff>=0.12.5",
     "langgraph-checkpoint-sqlite>=2.0.0",
+    "langsmith>=0.4.8",
+    "matplotlib>=3.10.3",
+    "seaborn>=0.13.2",
+    "scikit-learn>=1.7.1",
+    "statsmodels>=0.14.5",
+    "plotly>=6.2.0",
+    "pandas>=2.3.1",
+    "numpy>=2.3.2",
 ]
 
 [tool.setuptools]

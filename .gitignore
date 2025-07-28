@@ -40,13 +40,16 @@ Thumbs.db
 .pytest_cache/
 .coverage
 
+#! WARNING: Uncomment the following lines if you want to ignore database files
 # Database files that might contain sensitive data
-*.db
-*.sqlite
-*.sqlite3
+# *.db
+# *.sqlite
+# *.sqlite3
 
 # Chat history (contains conversation data)
 chat_history.db
 
 # OpenCode directory
 .opencode/
+
+GEMINI.md

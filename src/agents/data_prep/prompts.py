@@ -13,14 +13,18 @@ Data Sources:
 </data_sources>
 
 
+
 Follow these steps to prepare the data:
+
 
 1. Review the available tools, data sources, and analysis requirements carefully.
 
 2. For each data source:
-   a. Use the appropriate tool to extract the data.
-   b. Clean the data by removing duplicates, handling missing values, and correcting any inconsistencies.
-   c. Structure the data in a format suitable for capital markets analysis, considering time series, financial metrics, and relevant dimensions.
+   a. When presented with CSV or JSON, use the Python Sandbox tool to read and parse the data.
+   b. For SQL databases, use the SQLite tools to connect and query the data.
+   c. Use the appropriate tool to extract the data.
+   d. Clean the data by removing duplicates, handling missing values, and correcting any inconsistencies.
+   e. Structure the data in a format suitable for capital markets analysis, considering time series, financial metrics, and relevant dimensions.
 
 3. Design the SQLite database schema:
    a. Create tables that reflect the structure of the cleaned data.
@@ -39,6 +43,12 @@ Follow these steps to prepare the data:
    b. Consider partitioning large tables if necessary.
 
 7. Document the database schema, including table descriptions, column definitions, and any transformations applied to the original data.
+
+9. For advanced analysis:
+   - Use the Sandbox tool to execute Python code for any complex data transformations or calculations that cannot be performed directly in SQL.
+   - Use it in conjunction with SQL tools to update and fetch data from the SQLite database.
+
+10. Remember what the data sources are thru the conversation history, and use them as needed.
 
 Guidelines for data cleaning and structuring:
 - Ensure consistent date formats across all time series data.

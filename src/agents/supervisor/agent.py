@@ -1,5 +1,4 @@
 """Supervisor Agent Class"""
-from uuid import uuid4
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
@@ -100,9 +99,10 @@ class Supervisor(BaseAgent):
                 ),
                 QUERY=query,
             ),
-            supervisor_name=f"Supervisor_{str(uuid4()).replace('-', '_')}",
+            supervisor_name="Supervisor",
         )
 
+        # TODO: check why checkpointer is not working
         # Create persistent checkpointer
         checkpointer = SqliteSaver.from_conn_string("chat_history.db")
         self.workflow = supervisor.compile(
