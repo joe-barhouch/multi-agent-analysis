@@ -40,7 +40,7 @@ class GlobalState(TypedDict):
     user_query: str
     session_id: str
     conversation_history: List[BaseMessage]
-    
+
     # Chat history configuration
     max_messages: Optional[int]
     enable_trimming: bool
@@ -71,5 +71,5 @@ class GlobalState(TypedDict):
 
 class MessagesState(TypedDict):
     """LangGraph-compatible state for message handling."""
-    
+
     messages: Annotated[List[BaseMessage], add_messages]

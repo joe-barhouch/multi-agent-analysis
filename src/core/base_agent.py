@@ -17,6 +17,7 @@ class BaseAgent(ABC):
         self,
         agent_type: AgentType,
         name: str,
+        streaming: bool = False,
         state: GlobalState | None = None,
         config: RunnableConfig | None = None,
         logger: logging.Logger | None = logging.getLogger(f"{__name__}"),
@@ -34,6 +35,7 @@ class BaseAgent(ABC):
         self.state = state
         self.config = config or RunnableConfig()
         self.logger = logger
+        self.streaming = streaming
 
     @abstractmethod
     def create_workflow(self) -> None:

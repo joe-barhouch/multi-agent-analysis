@@ -2,7 +2,7 @@
 Streamlit-specific formatters for displaying execution results in the web interface.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import streamlit as st
@@ -329,4 +329,152 @@ class StreamlitFormatter:
         if len(result_str) > max_length:
             return result_str[: max_length - 3] + "..."
         return result_str
+
+    def display_global_state(self, global_state):
+        """Display the global state in a structured format."""
+        if not global_state:
+            st.info("No global state available.")
+            return
+
+        # Session Information
+        st.markdown("### 🔍 Session Information")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Session ID", global_state.get("session_id", "N/A"))
+        with col2:
+            st.metric("Current Agent", global_state.get("current_agent", "None"))
+        with col3:
+            st.metric("Query Count", len(global_state.get("conversation_history", [])) // 2)
+
+        # Conversation State
+        with st.expander("💬 Conversation State", expanded=False):
+            conversation_history = global_state.get("conversation_history", [])
+            max_messages = global_state.get("max_messages", 20)
+            enable_trimming = global_state.get("enable_trimming", False)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Messages", len(conversation_history))
+            with col2:
+                st.metric("Max Messages", max_messages)
+            with col3:
+                st.info("Trimming: " + ("✅" if enable_trimming else "❌"))
+
+        # Planning State
+        with st.expander("📋 Planning & Tasks", expanded=False):
+            current_task = global_state.get("current_task")
+            todo_plan = global_state.get("todo_plan", [])
+            
+            if current_task:
+                st.info(f"**Current Task:** {current_task}")
+            else:
+                st.info("**Current Task:** None")
+                
+            if todo_plan:
+                st.markdown(f"**Todo Plan ({len(todo_plan)} items):**")
+                for i, task in enumerate(todo_plan, 1):
+                    if isinstance(task, dict):
+                        task_name = task.get("name", task.get("description", str(task)))
+                        task_status = task.get("status", "unknown")
+                        status_emoji = {"pending": "⏳", "in_progress": "🔄", "completed": "✅"}.get(task_status, "❓")
+                        st.markdown(f"{i}. {status_emoji} {task_name}")
+                    else:
+                        st.markdown(f"{i}. {task}")
+            else:
+                st.info("No planned tasks")
+
+        # Data State
+        with st.expander("📊 Data State", expanded=False):
+            available_tables = global_state.get("available_tables", [])
+            created_subtables = global_state.get("created_subtables", [])
+            data_descriptions = global_state.get("data_descriptions", {})
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Available Tables", len(available_tables))
+                if available_tables:
+                    st.markdown("**Tables:**")
+                    for table in available_tables[:5]:  # Show first 5
+                        table_name = table.get("name", str(table)) if isinstance(table, dict) else str(table)
+                        st.markdown(f"• {table_name}")
+                    if len(available_tables) > 5:
+                        st.markdown(f"... and {len(available_tables) - 5} more")
+                        
+            with col2:
+                st.metric("Created Subtables", len(created_subtables))
+                if created_subtables:
+                    st.markdown("**Subtables:**")
+                    for subtable in created_subtables[:5]:
+                        st.markdown(f"• {subtable}")
+                    if len(created_subtables) > 5:
+                        st.markdown(f"... and {len(created_subtables) - 5} more")
+            
+            if data_descriptions:
+                st.markdown("**Data Descriptions:**")
+                for name, desc in list(data_descriptions.items())[:3]:
+                    st.markdown(f"• **{name}:** {desc[:100]}{'...' if len(desc) > 100 else ''}")
+                if len(data_descriptions) > 3:
+                    st.markdown(f"... and {len(data_descriptions) - 3} more")
+
+        # Dashboard State
+        dashboard_layout = global_state.get("dashboard_layout", {})
+        widget_specs = global_state.get("widget_specs", {})
+        widget_data_queries = global_state.get("widget_data_queries", {})
+        
+        if dashboard_layout or widget_specs or widget_data_queries:
+            with st.expander("📈 Dashboard State", expanded=False):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Layout Items", len(dashboard_layout))
+                with col2:
+                    st.metric("Widget Specs", len(widget_specs))
+                with col3:
+                    st.metric("Data Queries", len(widget_data_queries))
+
+        # Agent Communication
+        with st.expander("🤖 Agent Communication", expanded=False):
+            agent_history = global_state.get("agent_history", [])
+            current_agent = global_state.get("current_agent")
+            
+            if current_agent:
+                st.info(f"**Active Agent:** {self.format_agent_name(current_agent)}")
+            
+            if agent_history:
+                st.markdown(f"**Agent History ({len(agent_history)} agents):**")
+                agent_flow = " ➜ ".join([self.format_agent_name(agent) for agent in agent_history[-5:]])  # Last 5
+                st.markdown(agent_flow)
+                if len(agent_history) > 5:
+                    st.markdown(f"... and {len(agent_history) - 5} earlier agents")
+            else:
+                st.info("No agent history")
+
+        # Execution State
+        errors = global_state.get("errors", [])
+        warnings = global_state.get("warnings", [])
+        
+        if errors or warnings:
+            with st.expander("⚠️ Execution State", expanded=False):
+                col1, col2 = st.columns(2)
+                with col1:
+                    if errors:
+                        st.error(f"**Errors ({len(errors)}):**")
+                        for error in errors[:3]:
+                            error_msg = error.get("message", str(error)) if isinstance(error, dict) else str(error)
+                            st.markdown(f"• {error_msg}")
+                        if len(errors) > 3:
+                            st.markdown(f"... and {len(errors) - 3} more errors")
+                    else:
+                        st.success("**Errors:** None")
+                        
+                with col2:
+                    if warnings:
+                        st.warning(f"**Warnings ({len(warnings)}):**")
+                        for warning in warnings[:3]:
+                            warning_msg = warning.get("message", str(warning)) if isinstance(warning, dict) else str(warning)
+                            st.markdown(f"• {warning_msg}")
+                        if len(warnings) > 3:
+                            st.markdown(f"... and {len(warnings) - 3} more warnings")
+                    else:
+                        st.success("**Warnings:** None")
 

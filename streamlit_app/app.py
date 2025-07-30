@@ -13,6 +13,8 @@ import streamlit as st
 # Add parent directory to path to import our modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from st_cb_handler import get_streamlit_cb
+
 from src.agents.data_manager import DataManager
 from src.agents.supervisor.agent import Supervisor
 from src.core.runner import AgentRunner
@@ -113,6 +115,9 @@ class StreamlitApp:
         if "query_count" not in st.session_state:
             st.session_state.query_count = 0
 
+        if "global_state" not in st.session_state:
+            st.session_state.global_state = None
+
     def setup_sidebar(self):
         """Setup the sidebar with configuration and controls."""
         st.sidebar.markdown("# 🤖 Multi-Agent System")
@@ -190,6 +195,7 @@ class StreamlitApp:
 
         # Controls
         st.sidebar.markdown("### 🛠️ Controls")
+        # TODO: this should clear history only, not reset the session
         if st.sidebar.button("🗑️ Clear Chat History"):
             st.session_state.messages = []
             st.session_state.query_count = 0
@@ -241,6 +247,13 @@ class StreamlitApp:
                                     result.tool_calls
                                 )
 
+                        # Global State Display
+                        if result.final_global_state:
+                            with st.expander("🔍 Global State", expanded=False):
+                                self.formatter.display_global_state(
+                                    result.final_global_state
+                                )
+
                         # Execution Statistics
                         with st.expander("📊 Execution Statistics", expanded=False):
                             self.formatter.display_execution_stats(result)
@@ -249,16 +262,23 @@ class StreamlitApp:
                 with st.chat_message("assistant"):
                     st.error(f"❌ **Error:** {message['content']}")
 
-    async def process_query_async(self, query: str):
+    async def process_query_async(self, query: str, cb=None):
         """Process query asynchronously."""
         try:
             # Create supervisor factory
             def create_supervisor(name, global_state, config):
+                """Factory function to create a Supervisor agent."""
+                # Add cb to config if provided
+                if cb:
+                    config = config or {}
+                    config["callbacks"] = [cb]
+
                 supervisor = Supervisor(
                     name=name,
                     global_state=global_state,
                     data_manager=st.session_state.data_manager,
                     config=config,
+                    streaming=False,
                 )
                 return supervisor
 
@@ -283,8 +303,10 @@ class StreamlitApp:
         with st.chat_message("assistant"):
             with st.spinner("🤖 Processing your request..."):
                 try:
+                    # ST Callback Handler
+                    st_cb = get_streamlit_cb(st.container())
                     # Run async query processing
-                    result = asyncio.run(self.process_query_async(user_input))
+                    result = asyncio.run(self.process_query_async(user_input, st_cb))
 
                     # Extract AI response
                     ai_response = (
@@ -311,6 +333,10 @@ class StreamlitApp:
                     st.markdown("**🤖 AI Assistant:**")
                     st.markdown(ai_response)
 
+                    # Update global state in session
+                    if result.final_global_state:
+                        st.session_state.global_state = result.final_global_state
+
                     # Display execution results
                     if result.agent_flow:
                         with st.expander("🔄 Agent Collaboration", expanded=True):
@@ -323,6 +349,13 @@ class StreamlitApp:
                     if result.tool_calls:
                         with st.expander("📋 Tool Calls Details", expanded=False):
                             self.formatter.display_tool_calls_table(result.tool_calls)
+
+                    # Display global state
+                    if result.final_global_state:
+                        with st.expander("🔍 Global State", expanded=False):
+                            self.formatter.display_global_state(
+                                result.final_global_state
+                            )
 
                     with st.expander("📊 Execution Statistics", expanded=False):
                         self.formatter.display_execution_stats(result)
@@ -374,4 +407,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

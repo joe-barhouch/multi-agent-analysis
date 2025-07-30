@@ -4,5 +4,9 @@ Streamlit Multi-Agent Supervisor System
 A web-based chat interface for financial data analysis with multi-agent coordination.
 """
 
-__version__ = "1.0.0"
-__author__ = "Multi-Agent Analysis Team"
+from streamlit_app.st_cb_handler import get_streamlit_cb
+
+__all__ = [
+    "get_streamlit_cb",
+]
+

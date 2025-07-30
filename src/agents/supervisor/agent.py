@@ -10,11 +10,20 @@ from langgraph_supervisor import create_supervisor
 from pydantic import BaseModel, Field
 
 from src.agents import DataManager, DataPrepAgent, InterpreterAgent
+from src.config import DEBUG
 from src.core import AgentResult, AgentType, BaseAgent, GlobalState
 
 from .prompts import SUPERVISOR_PROMPT
 
 load_dotenv()
+
+# TODO:
+# Initiate flow to read data better
+# Update global state with tool calls
+# Update explored queries and sql ran and tables selected
+# Use sandbox for python manipulation
+# How to debug the internals of the data agent from a supervisor call
+# Streaming output
 
 
 class FinalResponse(BaseModel):
@@ -34,6 +43,7 @@ class Supervisor(BaseAgent):
         name: str,
         global_state: GlobalState,
         data_manager: DataManager,
+        streaming: bool = False,
         local_state: GlobalState | None = None,
         config: RunnableConfig | None = None,
         logger=None,
@@ -45,6 +55,7 @@ class Supervisor(BaseAgent):
             state=local_state,
             config=config,
             logger=logger,
+            streaming=streaming,
         )
         self.local_state = local_state
         self.global_state = global_state
@@ -117,6 +128,7 @@ class Supervisor(BaseAgent):
             add_handoff_messages=True,
             add_handoff_back_messages=True,
             response_format=FinalResponse,
+            output_mode="full_history",
         )
 
         # TODO: check why checkpointer is not working
@@ -160,49 +172,34 @@ class Supervisor(BaseAgent):
         messages = conversation_history.copy()
         messages.append(HumanMessage(content=query))
 
-        response = await self.workflow.ainvoke(
-            {"messages": messages}, config=self.config
-        )
+        if not self.streaming:
+            response = await self.workflow.ainvoke(
+                {"messages": messages}, config=self.config
+            )
 
-        # Enhanced debugging: Access checkpointer state if available
-        print(f"\n=== SUPERVISOR WORKFLOW DEBUG ===")
-        print(f"Workflow type: {type(self.workflow)}")
-        
-        # Try to access checkpointer state
-        if hasattr(self.workflow, 'checkpointer') and self.workflow.checkpointer:
-            checkpointer = self.workflow.checkpointer
-            print(f"Checkpointer type: {type(checkpointer)}")
-            print(f"Checkpointer available: {checkpointer is not None}")
-            
-            # Try to get checkpoint data
-            try:
-                # For InMemorySaver, we might need to access internal storage
-                if hasattr(checkpointer, 'storage'):
-                    print(f"Checkpointer storage keys: {list(checkpointer.storage.keys()) if checkpointer.storage else 'None'}")
-                    
-                    # Print checkpoint data for debugging
-                    for key, checkpoint_data in checkpointer.storage.items():
-                        print(f"Checkpoint {key}: {type(checkpoint_data)}")
-                        if hasattr(checkpoint_data, 'channel_values'):
-                            print(f"  Channel values: {checkpoint_data.channel_values.keys()}")
-                            # Look for messages in the checkpoint
-                            if 'messages' in checkpoint_data.channel_values:
-                                checkpoint_messages = checkpoint_data.channel_values['messages']
-                                print(f"  Checkpoint has {len(checkpoint_messages)} messages")
-                                
-            except Exception as e:
-                print(f"Error accessing checkpointer: {e}")
         else:
-            print("No checkpointer available")
-        
-        print("=== END SUPERVISOR DEBUG ===\n")
+            # TODO: fix streaming
+            async for chunk in self.workflow.astream(
+                {"messages": messages}, stream_mode="values"
+            ):
+                print(chunk)  # Print each chunk for debugging
+
+            print("Streaming not fully implemented yet.")
+            response = None
+
+        # Debugging output
+        if DEBUG:
+            self.debug_workflow()
 
         # Placeholder for actual implementation
         return AgentResult(
             success=True,
             data={"message": response},
             error=None,
-            metadata={"agent_name": self.name, "checkpointer": getattr(self.workflow, 'checkpointer', None)},
+            metadata={
+                "agent_name": self.name,
+                "checkpointer": getattr(self.workflow, "checkpointer", None),
+            },
         )
 
     def validate_input(self) -> None:
@@ -228,3 +225,46 @@ class Supervisor(BaseAgent):
             )
         except Exception as e:
             self.log_activity(f"Error drawing workflow graph: {e}", level="error")
+
+    def debug_workflow(self) -> None:
+        """Debug the workflow by printing its structure."""
+        # Enhanced debugging: Access checkpointer state if available
+        print("\n=== SUPERVISOR WORKFLOW DEBUG ===")
+        print(f"Workflow type: {type(self.workflow)}")
+
+        # Try to access checkpointer state
+        if hasattr(self.workflow, "checkpointer") and self.workflow.checkpointer:
+            checkpointer = self.workflow.checkpointer
+            print(f"Checkpointer type: {type(checkpointer)}")
+            print(f"Checkpointer available: {checkpointer is not None}")
+
+            # Try to get checkpoint data
+            try:
+                # For InMemorySaver, we might need to access internal storage
+                if hasattr(checkpointer, "storage"):
+                    print(
+                        f"Checkpointer storage keys: {list(checkpointer.storage.keys()) if checkpointer.storage else 'None'}"
+                    )
+
+                    # Print checkpoint data for debugging
+                    for key, checkpoint_data in checkpointer.storage.items():
+                        print(f"Checkpoint {key}: {type(checkpoint_data)}")
+                        if hasattr(checkpoint_data, "channel_values"):
+                            print(
+                                f"  Channel values: {checkpoint_data.channel_values.keys()}"
+                            )
+                            # Look for messages in the checkpoint
+                            if "messages" in checkpoint_data.channel_values:
+                                checkpoint_messages = checkpoint_data.channel_values[
+                                    "messages"
+                                ]
+                                print(
+                                    f"  Checkpoint has {len(checkpoint_messages)} messages"
+                                )
+
+            except Exception as e:
+                print(f"Error accessing checkpointer: {e}")
+        else:
+            print("No checkpointer available")
+
+        print("=== END SUPERVISOR DEBUG ===\n")

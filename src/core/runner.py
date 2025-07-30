@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 
-from src.core import BaseAgent
+from src.core import BaseAgent, GlobalState
 from src.core.models import AgentResult
 
 
@@ -25,6 +25,7 @@ class ExecutionResult:
     token_usage: Optional[Dict[str, int]] = None
     execution_time: float = 0.0
     raw_data: Optional[Dict[str, Any]] = None
+    final_global_state: Optional[GlobalState] = None
 
 
 @dataclass
@@ -206,7 +207,9 @@ class AgentRunner:
             tool_results = {
                 msg.tool_call_id: msg.content
                 for msg in messages
-                if isinstance(msg, ToolMessage) and hasattr(msg, 'tool_call_id') and msg.tool_call_id
+                if isinstance(msg, ToolMessage)
+                and hasattr(msg, "tool_call_id")
+                and msg.tool_call_id
             }
 
             tools_used = []
@@ -215,7 +218,11 @@ class AgentRunner:
             # Iterate through all messages to find tool calls and track agent context
             for message in messages:
                 # Track current agent context
-                if isinstance(message, AIMessage) and hasattr(message, "name") and message.name:
+                if (
+                    isinstance(message, AIMessage)
+                    and hasattr(message, "name")
+                    and message.name
+                ):
                     current_agent = message.name
 
                 # Extract tool calls from AIMessages
@@ -241,16 +248,19 @@ class AgentRunner:
                 elif isinstance(message, ToolMessage):
                     tool_name = getattr(message, "name", "Unknown")
                     tool_id = getattr(message, "tool_call_id", "")
-                    
+
                     # Only add if we haven't already captured this tool call
                     if not any(tool["id"] == tool_id for tool in tools_used):
                         # Infer agent based on tool type or current context
                         inferred_agent = current_agent
                         if "sql_db" in tool_name.lower():
                             inferred_agent = "Data Prep"
-                        elif "python" in tool_name.lower() or "sandbox" in tool_name.lower():
+                        elif (
+                            "python" in tool_name.lower()
+                            or "sandbox" in tool_name.lower()
+                        ):
                             inferred_agent = "Data Prep"
-                        
+
                         tools_used.append(
                             {
                                 "name": tool_name,
@@ -264,7 +274,9 @@ class AgentRunner:
             # EXPERIMENTAL: Try to extract nested tool calls from checkpointer metadata
             checkpointer_tools = self._extract_nested_tool_calls(result_data)
             if checkpointer_tools:
-                print(f"DEBUG: Found {len(checkpointer_tools)} additional tools from nested extraction")
+                print(
+                    f"DEBUG: Found {len(checkpointer_tools)} additional tools from nested extraction"
+                )
                 tools_used.extend(checkpointer_tools)
 
             return tools_used
@@ -273,54 +285,101 @@ class AgentRunner:
             print(f"Error extracting tool calls: {e}")
             return []
 
-    def _extract_nested_tool_calls(self, result_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _extract_nested_tool_calls(
+        self, result_data: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         """Attempt to extract tool calls from nested agent workflows."""
         nested_tools = []
-        
+
         try:
             # Check if we have checkpointer metadata
             metadata = result_data.get("metadata", {})
             checkpointer = metadata.get("checkpointer")
-            
-            if checkpointer and hasattr(checkpointer, 'storage'):
+
+            if checkpointer and hasattr(checkpointer, "storage"):
                 print(f"DEBUG: Attempting nested tool extraction from checkpointer")
-                
+
                 # Iterate through checkpoint storage
                 for key, checkpoint_data in checkpointer.storage.items():
-                    if hasattr(checkpoint_data, 'channel_values'):
+                    if hasattr(checkpoint_data, "channel_values"):
                         channel_values = checkpoint_data.channel_values
-                        
+
                         # Look for messages in different channels
                         for channel_name, channel_content in channel_values.items():
-                            if channel_name == 'messages' and isinstance(channel_content, list):
-                                print(f"DEBUG: Found {len(channel_content)} messages in checkpoint channel '{channel_name}'")
-                                
+                            if channel_name == "messages" and isinstance(
+                                channel_content, list
+                            ):
+                                print(
+                                    f"DEBUG: Found {len(channel_content)} messages in checkpoint channel '{channel_name}'"
+                                )
+
                                 # Extract tools from checkpoint messages
                                 for msg in channel_content:
-                                    if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                                    if hasattr(msg, "tool_calls") and msg.tool_calls:
                                         for tool_call in msg.tool_calls:
-                                            nested_tools.append({
-                                                "name": tool_call.get("name", "Unknown"),
-                                                "args": tool_call.get("args", {}),
-                                                "id": tool_call.get("id", ""),
-                                                "agent": getattr(msg, "name", "Unknown"),
-                                                "result": "",
-                                                "source": "checkpointer"
-                                            })
+                                            nested_tools.append(
+                                                {
+                                                    "name": tool_call.get(
+                                                        "name", "Unknown"
+                                                    ),
+                                                    "args": tool_call.get("args", {}),
+                                                    "id": tool_call.get("id", ""),
+                                                    "agent": getattr(
+                                                        msg, "name", "Unknown"
+                                                    ),
+                                                    "result": "",
+                                                    "source": "checkpointer",
+                                                }
+                                            )
                                     elif isinstance(msg, ToolMessage):
-                                        nested_tools.append({
-                                            "name": getattr(msg, "name", "Unknown"),
-                                            "args": {},
-                                            "id": getattr(msg, "tool_call_id", ""),
-                                            "agent": "Data Prep",  # Infer from context
-                                            "result": msg.content,
-                                            "source": "checkpointer"
-                                        })
-            
+                                        nested_tools.append(
+                                            {
+                                                "name": getattr(msg, "name", "Unknown"),
+                                                "args": {},
+                                                "id": getattr(msg, "tool_call_id", ""),
+                                                "agent": "Data Prep",  # Infer from context
+                                                "result": msg.content,
+                                                "source": "checkpointer",
+                                            }
+                                        )
+
         except Exception as e:
             print(f"DEBUG: Error in nested tool extraction: {e}")
-        
+
         return nested_tools
+
+    def _extract_final_global_state(
+        self, result_data: Dict[str, Any], supervisor
+    ) -> Optional["GlobalState"]:
+        """Extract the final global state from supervisor execution."""
+        try:
+            # Try to get the global state from the supervisor agent
+            if hasattr(supervisor, "global_state"):
+                return supervisor.global_state
+
+            # Alternative: try to extract from result data
+            if result_data and "global_state" in result_data:
+                return result_data["global_state"]
+
+            # If supervisor has a workflow with state
+            if hasattr(supervisor, "workflow") and hasattr(
+                supervisor.workflow, "get_state"
+            ):
+                try:
+                    workflow_state = supervisor.workflow.get_state()
+                    if workflow_state and hasattr(workflow_state, "values"):
+                        # Look for global state in workflow values
+                        values = workflow_state.values
+                        if isinstance(values, dict) and "global_state" in values:
+                            return values["global_state"]
+                except Exception:
+                    pass
+
+            return None
+
+        except Exception as e:
+            print(f"DEBUG: Error extracting final global state: {e}")
+            return None
 
     def _update_conversation_history(
         self, session: SessionContext, query: str, response: str
@@ -393,37 +452,52 @@ class AgentRunner:
             agent_flow = self._extract_agent_flow(result.data)
             tool_calls = self._extract_tool_calls(result.data)
             token_usage = self._extract_token_usage(result.data)
-            
+
+            # Extract final global state from supervisor result
+            final_global_state = self._extract_final_global_state(
+                result.data, supervisor
+            )
+
             # Enhanced Debug: Print comprehensive message analysis
             if result.data and "message" in result.data:
                 messages = result.data["message"].get("messages", [])
                 print(f"\n=== DEEP DEBUG: Message Analysis ===")
                 print(f"Found {len(messages)} messages in supervisor workflow:")
-                
+
                 for i, msg in enumerate(messages):
                     msg_type = type(msg).__name__
-                    msg_name = getattr(msg, 'name', 'N/A')
-                    has_tool_calls = hasattr(msg, 'tool_calls') and msg.tool_calls
-                    is_tool_msg = msg_type == 'ToolMessage'
-                    
-                    print(f"  [{i}] {msg_type} | name: {msg_name} | has_tool_calls: {has_tool_calls} | is_tool_msg: {is_tool_msg}")
-                    
+                    msg_name = getattr(msg, "name", "N/A")
+                    has_tool_calls = hasattr(msg, "tool_calls") and msg.tool_calls
+                    is_tool_msg = msg_type == "ToolMessage"
+
+                    print(
+                        f"  [{i}] {msg_type} | name: {msg_name} | has_tool_calls: {has_tool_calls} | is_tool_msg: {is_tool_msg}"
+                    )
+
                     # Enhanced tool call debugging
                     if has_tool_calls:
                         for j, tc in enumerate(msg.tool_calls):
-                            print(f"       Tool Call [{j}]: {tc.get('name', 'Unknown')} | args: {tc.get('args', {})}")
-                    
+                            print(
+                                f"       Tool Call [{j}]: {tc.get('name', 'Unknown')} | args: {tc.get('args', {})}"
+                            )
+
                     if is_tool_msg:
-                        tool_name = getattr(msg, 'name', 'Unknown')
-                        tool_content = getattr(msg, 'content', '')
-                        content_preview = tool_content[:100] + "..." if len(tool_content) > 100 else tool_content
+                        tool_name = getattr(msg, "name", "Unknown")
+                        tool_content = getattr(msg, "content", "")
+                        content_preview = (
+                            tool_content[:100] + "..."
+                            if len(tool_content) > 100
+                            else tool_content
+                        )
                         print(f"       Tool: {tool_name} | content: {content_preview}")
-                    
+
                     # Check for any additional metadata or nested content
-                    if hasattr(msg, 'additional_kwargs') and msg.additional_kwargs:
+                    if hasattr(msg, "additional_kwargs") and msg.additional_kwargs:
                         print(f"       Additional kwargs: {msg.additional_kwargs}")
-                
-                print(f"DEBUG: Extracted {len(tool_calls)} tool calls from supervisor workflow")
+
+                print(
+                    f"DEBUG: Extracted {len(tool_calls)} tool calls from supervisor workflow"
+                )
                 print("=== END DEEP DEBUG ===\n")
 
             # Update conversation history
@@ -439,6 +513,7 @@ class AgentRunner:
                 token_usage=token_usage,
                 execution_time=time.time() - start_time,
                 raw_data=result.data,
+                final_global_state=final_global_state,
             )
 
         except Exception as e:
