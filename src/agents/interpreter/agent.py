@@ -36,6 +36,7 @@ class InterpreterAgent(BaseAgent):
         self.local_state = local_state
         self.global_state = global_state
 
+        self.name = name
         self.create_workflow()
 
     def create_workflow(self) -> None:
@@ -50,7 +51,7 @@ class InterpreterAgent(BaseAgent):
             if api_key:
                 try:
                     model = ChatOpenAI(
-                        model="gpt-4o-mini", temperature=0.0, api_key=api_key
+                        model="gpt-4.1-mini", temperature=0.0, api_key=api_key
                     )
                 except Exception as e:
                     self.log_activity(
@@ -99,7 +100,7 @@ class InterpreterAgent(BaseAgent):
                 metadata={"agent_name": self.name},
             )
 
-        query = self.config.get("configurable", {}).get("query")
+        query = self.global_state.get("user_query", None)
 
         if not query:
             self.log_activity("No query provided for data preparation.", level="error")
@@ -109,9 +110,6 @@ class InterpreterAgent(BaseAgent):
                 error="No query provided for data preparation.",
                 metadata={"agent_name": self.name},
             )
-
-        # Call the workflow with proper message format
-        from langchain_core.messages import HumanMessage
 
         response = await self.workflow.ainvoke(
             {"messages": [HumanMessage(content=query)]}

@@ -47,6 +47,7 @@ Follow these steps to prepare the data:
 9. For advanced analysis:
    - Use the Sandbox tool to execute Python code for any complex data transformations or calculations that cannot be performed directly in SQL.
    - Use it in conjunction with SQL tools to update and fetch data from the SQLite database.
+   - Write code under triple block commments python code block format
 
 10. Remember what the data sources are thru the conversation history, and use them as needed.
 
@@ -58,6 +59,9 @@ When creating the SQLite database:
 - Use appropriate data types for each column (e.g., INTEGER for whole numbers, REAL for floating-point numbers, TEXT for strings).
 - Implement constraints (e.g., NOT NULL, UNIQUE) where applicable to maintain data integrity.
 - Create indexes on columns that will be frequently used in WHERE clauses or JOIN conditions.
+
+Any request to handle code execution should be passed to the Python Sandbox tool.
+Write code to evaluate the query to help with the conversation
 
 
 Remember to use only the tools provided and adhere to the input formats """

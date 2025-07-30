@@ -7,6 +7,7 @@ from langchain_openai import ChatOpenAI
 from langchain_sandbox import PyodideSandboxTool
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.prebuilt import create_react_agent
+from openai import OpenAI
 
 from src.agents.data_manager import DataManager
 from src.core.base_agent import BaseAgent
@@ -42,6 +43,8 @@ class DataPrepAgent(BaseAgent):
 
         self.data_manager = data_manager
 
+        self.name = name
+
         self.create_workflow()
 
     def create_workflow(self) -> None:
@@ -56,7 +59,7 @@ class DataPrepAgent(BaseAgent):
             if api_key:
                 try:
                     model = ChatOpenAI(
-                        model="gpt-4o-mini", temperature=0, api_key=api_key
+                        model="gpt-4.1-mini", temperature=0, api_key=api_key
                     )
                 except Exception as e:
                     self.log_activity(
@@ -81,6 +84,9 @@ class DataPrepAgent(BaseAgent):
             stateful=True,
         )
 
+        # sandbox_tool = self.setup_code_interpreter()
+        # sandbox_tool = self.setup_responses()
+
         # Tool descriptions
         tool_info = (
             "\n".join(
@@ -88,14 +94,19 @@ class DataPrepAgent(BaseAgent):
             )
             + f"<tool>{sandbox_tool.name}: {sandbox_tool.description}</tool>"
         )
-        breakpoint()
+
+        print(f"\nTool info: {tool_info}")
 
         self.workflow = create_react_agent(
             model=model,
-            tools=[*sqlite_tools, sandbox_tool],
+            # tools=[*sqlite_tools, sandbox_tool],
+            tools=[*sqlite_tools],
             prompt=DATA_PREP_PROMPT.format(
                 TOOLS=tool_info,
-                DATA_SOURCES="Sources",
+                DATA_SOURCES="""Sources: 
+                    - DB: financial_data.db SQLite database
+                    - data/finance_economics_dataset.csv CSV file
+                   """,
             ),
             name=self.name,
             checkpointer=InMemorySaver(),  # Use in-memory saver for simplicity
@@ -103,6 +114,76 @@ class DataPrepAgent(BaseAgent):
         self.log_activity("Creating workflow for data preparation tasks.")
 
         return self.workflow
+
+    def setup_responses(self) -> None:
+        """Setup Code Interpreter tool with persistent context."""
+        model = self.config.get("configurable", {}).get("model")
+        client = OpenAI()
+
+        # file = client.files.create(
+        #     file=open(
+        #         "/Users/joe/joe/personal/multi-agent-analysis/data/finance_economics_dataset.csv",
+        #         "rb",
+        #     ),
+        #     purpose="assistants",
+        # )
+
+        container = client.containers.create(name="code_interpreter_container")
+
+        chat_model = ChatOpenAI(
+            model=model.model_name,
+            output_version="responses/v1",
+            use_responses_api=True,
+            use_previous_response_id=True,
+        )
+        code_model = chat_model.bind_tools(
+            [
+                {
+                    "type": "code_interpreter",
+                    "container": container.id,
+                    "files": ["file-AhTVPQ698NboD96RqD6MpX"],
+                },
+            ]
+        )
+
+        self.code_model = code_model
+
+        return code_model
+
+    async def run_code_interpreter(self) -> None:
+
+        code_model = self.setup_responses()
+        # Maintain conversation context
+        messages = []
+
+        questions = [
+            "Read the CSV file and explain the data in the file. (the finance_economics_dataset.csv)"
+            "save a monthly average of the close and return columns to a new csv"
+        ]
+
+        for q in questions:
+            # Add user message
+            messages.append(
+                HumanMessage(
+                    content=q,
+                    additional_kwargs={
+                        "attachments": [
+                            {
+                                "files": "file-AhTVPQ698NboD96RqD6MpX",
+                            }
+                        ]
+                    },
+                )
+            )
+
+            # Get response with full context
+            response = await code_model.ainvoke(messages, config=self.config)
+
+            # Add assistant response to maintain context
+            messages.append({"role": "assistant", "content": response.content})
+
+            self.log_activity(f"Code Interpreter response: {response.content}")
+            print(f"Code Interpreter response: {response.content}")
 
     async def execute(self) -> AgentResult:
         """Execute data preparation tasks."""
@@ -119,7 +200,7 @@ class DataPrepAgent(BaseAgent):
                 metadata={"agent_name": self.name},
             )
 
-        query = self.config.get("configurable", {}).get("query")
+        query = self.global_state.get("user_query", None)
 
         if not query:
             self.log_activity("No query provided for data preparation.", level="error")
@@ -150,3 +231,48 @@ class DataPrepAgent(BaseAgent):
             raise ValueError("Configuration is required for DataPrepAgent.")
         # Model can be None for testing without API key
         self.log_activity("Input validation completed successfully.")
+
+
+if __name__ == "__main__":
+    # Example usage
+    from dotenv import load_dotenv
+    from langchain_openai import ChatOpenAI
+
+    from src.core.state import GlobalState
+
+    load_dotenv()
+
+    global_state = GlobalState(
+        user_query="Compute the average of 3215 - cos(45)", thread_id=1
+    )
+
+    data_manager = DataManager("financial_data.db")
+
+    data_manager.get_sql_database()
+
+    agent = DataPrepAgent(
+        name="DataPrepAgent",
+        global_state=global_state,
+        data_manager=data_manager,
+        config=RunnableConfig(
+            configurable={
+                "model": ChatOpenAI(
+                    model="gpt-4.1-mini",
+                    temperature=0,
+                ),
+                "thread_id": "thread-1",
+            }
+        ),
+    )
+
+    # Create workflow
+    agent.create_workflow()
+
+    # Execute the agent
+    import asyncio
+
+    # code_model = agent.setup_responses()
+
+    asyncio.run(agent.run_code_interpreter())
+
+    asyncio.run(agent.execute())
