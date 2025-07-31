@@ -6,6 +6,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import Tool
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.memory import InMemorySaver
 
 from src.agents.interpreter.models import Plan, QueryInterpretation
 from src.agents.interpreter.prompts import INTERPRETER_PROMPT, PLAN_PROMPT
@@ -134,6 +135,7 @@ class InterpreterAgent(BaseAgent):
             tools=tools,
             prompt=prompt,
             name=self.name,
+            checkpointer=InMemorySaver(),
         )
 
         self.workflow = workflow
@@ -164,20 +166,19 @@ class InterpreterAgent(BaseAgent):
                 metadata={"agent_name": self.name},
             )
 
-        breakpoint()
-        # response = await self.workflow.ainvoke(
-        #     {"messages": [HumanMessage(content=query)]}
-        # )
-
-        async for chunk in self.workflow.astream(
+        response = await self.workflow.ainvoke(
             {"messages": [HumanMessage(content=query)]},
             config=self.config,
-        ):
-            response = chunk
-            print(response)
+        )
+
+        # async for chunk in self.workflow.astream(
+        #     {"messages": [HumanMessage(content=query)]},
+        #     config=self.config,
+        # ):
+        #     response = chunk
+        #     print(response)
 
         breakpoint()
-
         # Placeholder for actual implementation
         return AgentResult(
             success=True,
@@ -186,15 +187,21 @@ class InterpreterAgent(BaseAgent):
             metadata={"agent_name": self.name},
         )
 
-    async def create_plan(self, state, config):
+    async def create_plan(self, state, config=None):
         """Create a plan based on the current state."""
         self.log_activity("Creating plan based on current state.")
 
         # Use the workflow to create a plan
-        model = config.get("configurable", {}).get("model")
-        query = state.get("user_query", "")
+        if config:
+            model = config.get("configurable", {}).get("model")
+        else:
+            model = self.config.get("configurable", {}).get("model")
 
-        chat_history = state.get("conversation_history", [])
+        # query = state.get("user_query", "")
+        query = state
+
+        # chat_history = state.get("conversation_history", [])
+        chat_history = []
 
         structured_model = model.with_structured_output(schema=Plan)
         human_prompt = """Here is the user's query:
@@ -243,13 +250,19 @@ class InterpreterAgent(BaseAgent):
             "plan": plan,
         }
 
-    async def interpret_question(self, state, config):
+    async def interpret_question(self, state, config=None):
         """Interpret Question"""
         self.log_activity("Interpreting user question.")
-        model = config.get("configurable", {}).get("model")
-        query = state.get("user_query", "")
+        if config:
+            model = config.get("configurable", {}).get("model")
+        else:
+            model = self.config.get("configurable", {}).get("model")
 
-        chat_history = state.get("conversation_history", [])
+        # query = state.get("user_query", "")
+        query = state
+
+        # chat_history = state.get("conversation_history", [])
+        chat_history = []
 
         structured_model = model.with_structured_output(schema=QueryInterpretation)
         human_prompt = """Here is the user's query:
@@ -301,13 +314,13 @@ async def main():
     agent = InterpreterAgent(
         name="Interpreter",
         global_state=GlobalState(
-            user_query="Show me the top 3 companies by revenue in 2005"
+            user_query="Show me the top 3 companies by revenue in 2005, then display bottom 5 by GDP growth"
         ),
         local_state=None,
         config={
             "configurable": {
                 "model": ChatOpenAI(model="gpt-4.1-mini", temperature=0.0),
-                "thread-id": "thread-1",
+                "thread_id": "thread-1",
             },
             "recursion_limit": 5,
         },
