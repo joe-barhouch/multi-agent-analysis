@@ -2,11 +2,11 @@
 
 import logging
 from abc import ABC, abstractmethod
+from typing import TypedDict, Union
 
 from langchain_core.runnables import RunnableConfig
 
 from .models import AgentResult
-from .state import GlobalState
 from .types import AgentType
 
 
@@ -18,9 +18,9 @@ class BaseAgent(ABC):
         agent_type: AgentType,
         name: str,
         streaming: bool = False,
-        state: GlobalState | None = None,
-        config: RunnableConfig | None = None,
-        logger: logging.Logger | None = logging.getLogger(f"{__name__}"),
+        state: Union[TypedDict, None] = None,
+        config: Union[RunnableConfig, None] = None,
+        logger: Union[logging.Logger, None] = logging.getLogger(f"{__name__}"),
     ):
         """Initialize the base agent.
 

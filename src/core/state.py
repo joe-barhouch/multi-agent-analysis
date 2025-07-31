@@ -1,15 +1,12 @@
 """Global state schema for the multi-agent BI system."""
 
-from typing import TYPE_CHECKING, Annotated, Dict, List, Optional, TypedDict
+from typing import Dict, Optional, TypedDict
 
 from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-if TYPE_CHECKING:
-    from src.agents.interpreter.models import QueryInterpretation
-
-from .types import Task
+from src.agents.interpreter.models import Plan, QueryInterpretation
 
 
 class WidgetDataRequirements(BaseModel):
@@ -18,8 +15,8 @@ class WidgetDataRequirements(BaseModel):
     widget_id: str
     widget_type: str  # "line_chart", "table", "kpi_card", "heatmap"
     data_format: str  # "time_series", "snapshot", "aggregated"
-    main_columns: List[str]
-    additional_columns: List[str] = []
+    main_columns: list[str]
+    additional_columns: list[str] = []
     aggregation_level: str  # "daily", "company", "portfolio"
 
 
@@ -33,43 +30,43 @@ class WidgetSpec(BaseModel):
     position: Dict  # {"x": 0, "y": 0, "w": 6, "h": 4}
 
 
+class AgentConfig(TypedDict):
+    """Configuration for agents in the system."""
+
+    model: ChatOpenAI
+
+
 class GlobalState(TypedDict):
     """Shared state across all agents in the system."""
 
     # Core conversation state
     user_query: str
     session_id: str
-    conversation_history: List[BaseMessage]
+    conversation_history: list[BaseMessage]
 
     # Chat history configuration
     max_messages: Optional[int]
     enable_trimming: bool
 
     # Interpretation and planning
-    interpreted_query: Optional["QueryInterpretation"]
-    todo_plan: List[Task]
+    interpreted_query: Optional[QueryInterpretation]
+    plan: Plan
     current_task: Optional[str]
 
     # Dashboard state
-    dashboard_layout: Dict
-    widget_specs: Dict[str, WidgetSpec]
-    widget_data_queries: Dict[str, Dict]  # {widget_id: {sql: str, pandas: str}}
+    dashboard_layout: dict
+    widget_specs: dict[str, WidgetSpec]
+    widget_data_queries: dict[str, dict]  # {widget_id: {sql: str, pandas: str}}
 
     # Data state
-    available_tables: List[Dict]  # Schema information
-    created_subtables: List[str]
-    data_descriptions: Dict[str, str]
+    available_tables: list[Dict]  # Schema information
+    created_subtables: list[str]
+    data_descriptions: dict[str, str]
 
     # Execution state
-    errors: List[Dict]
-    warnings: List[Dict]
+    errors: list[Dict]
+    warnings: list[Dict]
 
     # Agent communication
     current_agent: Optional[str]
-    agent_history: List[str]
-
-
-class MessagesState(TypedDict):
-    """LangGraph-compatible state for message handling."""
-
-    messages: Annotated[List[BaseMessage], add_messages]
+    agent_history: list[str]

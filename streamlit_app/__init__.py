@@ -9,4 +9,3 @@ from streamlit_app.st_cb_handler import get_streamlit_cb
 __all__ = [
     "get_streamlit_cb",
 ]
-

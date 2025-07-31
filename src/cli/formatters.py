@@ -62,7 +62,7 @@ class ResultFormatter:
 
             elif item["type"] == "agent_response":
                 agent_name = ResultFormatter.format_agent_name(item["agent"])
-                
+
                 # Only show agent handoffs, not detailed responses
                 tree.add(f"🤖 {agent_name}: [Processing...]")
 
@@ -75,35 +75,35 @@ class ResultFormatter:
 
         return tree
 
-    @staticmethod 
+    @staticmethod
     def create_tool_details_panel(result: ExecutionResult) -> str:
         """Create a separate Tool Details panel with detailed agent responses."""
         details = []
-        
+
         for item in result.agent_flow:
             if item["type"] == "agent_response" and item.get("content", "").strip():
                 agent_name = ResultFormatter.format_agent_name(item["agent"])
                 content = item["content"]
-                
+
                 # Format the detailed response
                 if "<thought_process>" in content and "<result>" in content:
                     # Extract and format thought process and result separately
                     thought_start = content.find("<thought_process>") + 17
                     thought_end = content.find("</thought_process>")
-                    result_start = content.find("<result>") + 8  
+                    result_start = content.find("<result>") + 8
                     result_end = content.find("</result>")
-                    
+
                     if thought_start > 17 and thought_end > thought_start:
                         thought = content[thought_start:thought_end].strip()
                         details.append(f"💭 {agent_name} Thinking:\n{thought}")
-                    
+
                     if result_start > 8 and result_end > result_start:
                         result = content[result_start:result_end].strip()
                         details.append(f"✅ {agent_name} Result:\n{result}")
                 else:
                     # Show full content for non-structured responses
                     details.append(f"🤖 {agent_name}:\n{content}")
-        
+
         return "\n\n".join(details) if details else "No detailed responses available."
 
     # @staticmethod
@@ -201,11 +201,15 @@ class ResultFormatter:
             target = tool_name.replace("transfer_to_", "").replace("_", " ").title()
             purpose = f"Delegate to {target}"
             args_display = "-"
-            result_display = tool.get("result", f"Successfully transferred to {target.lower()}")
+            result_display = tool.get(
+                "result", f"Successfully transferred to {target.lower()}"
+            )
         elif "transfer_back" in tool_name:
             purpose = "Return Control"
             args_display = "-"
-            result_display = tool.get("result", "Successfully transferred back to Supervisor")
+            result_display = tool.get(
+                "result", "Successfully transferred back to Supervisor"
+            )
         elif "sql_db_list_tables" in tool_name:
             purpose = "List Database Tables"
             args_display = "-"
@@ -216,8 +220,14 @@ class ResultFormatter:
             result_display = ResultFormatter._format_result(tool.get("result", ""))
         elif "sql_db_schema" in tool_name:
             purpose = "Get Table Schema"
-            table_name = tool.get("args", {}).get("table_names_to_use", "") or tool.get("args", {}).get("table", "")
-            args_display = f"Table: {table_name}" if table_name else ResultFormatter._format_args(tool.get("args", {}))
+            table_name = tool.get("args", {}).get("table_names_to_use", "") or tool.get(
+                "args", {}
+            ).get("table", "")
+            args_display = (
+                f"Table: {table_name}"
+                if table_name
+                else ResultFormatter._format_args(tool.get("args", {}))
+            )
             result_display = ResultFormatter._format_result(tool.get("result", ""))
         elif "python" in tool_name.lower() or "sandbox" in tool_name.lower():
             purpose = "Execute Python Code"
@@ -238,16 +248,14 @@ class ResultFormatter:
         else:
             display_name = tool_name.replace("_", " ").title()
 
-        table.add_row(
-            agent_name, display_name, purpose, args_display, result_display
-        )
+        table.add_row(agent_name, display_name, purpose, args_display, result_display)
 
     @staticmethod
     def _format_sql_query(args: dict) -> str:
         """Format SQL query from arguments."""
         if not args:
             return "-"
-        
+
         query = args.get("query", "")
         if isinstance(query, str) and query.strip():
             # Clean up and truncate long queries
@@ -257,13 +265,13 @@ class ResultFormatter:
             if len(query) > 50:
                 return query[:50] + "..."
             return query
-        
+
         # Check for other common argument patterns
         if "table_names_to_use" in args:
             return f"Table: {args['table_names_to_use']}"
         elif "schema" in args:
             return f"Schema: {args['schema']}"
-        
+
         # Fall back to showing all args
         args_str = str(args)
         if len(args_str) > 50:
@@ -308,7 +316,7 @@ class ResultFormatter:
                 items = eval(result_str)
                 if isinstance(items, list) and items:
                     preview = f"{items[0]}" + (
-                        f" (+{len(items)-1} more)" if len(items) > 1 else ""
+                        f" (+{len(items) - 1} more)" if len(items) > 1 else ""
                     )
                     if len(preview) > max_length:
                         return preview[: max_length - 3] + "..."
@@ -346,12 +354,12 @@ class ResultFormatter:
         """Format tool arguments for display."""
         if not args:
             return "-"
-        
+
         # Handle dict arguments
         if isinstance(args, dict):
             if not args:
                 return "-"
-            
+
             # Check for common patterns
             if "query" in args:
                 return ResultFormatter._format_sql_query(args)
@@ -360,19 +368,19 @@ class ResultFormatter:
             elif "table" in args or "table_names_to_use" in args:
                 table_name = args.get("table") or args.get("table_names_to_use", "")
                 return f"Table: {table_name}" if table_name else str(args)
-            
+
             # Show key-value pairs in a readable format
             items = []
             for key, value in args.items():
                 if isinstance(value, str) and len(value) > 30:
                     value = value[:30] + "..."
                 items.append(f"{key}: {value}")
-            
+
             args_str = ", ".join(items)
             if len(args_str) > max_length:
                 return args_str[:max_length] + "..."
             return args_str
-        
+
         # Handle other types
         args_str = str(args)
         if len(args_str) > max_length:

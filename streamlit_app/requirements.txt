@@ -1,0 +1,18 @@
+# Streamlit Multi-Agent System Requirements
+
+# Core Streamlit
+streamlit>=1.28.0
+
+# Data handling
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Async support
+asyncio-tools>=0.1.2
+
+# UI enhancements
+plotly>=5.17.0
+altair>=5.0.0
+
+# All existing project dependencies are inherited from main project
+# This file only contains Streamlit-specific additions

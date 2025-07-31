@@ -6,6 +6,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.graph import StateGraph
 from langgraph_supervisor import create_supervisor
 from pydantic import BaseModel, Field
 
@@ -44,7 +45,7 @@ class Supervisor(BaseAgent):
         global_state: GlobalState,
         data_manager: DataManager,
         streaming: bool = False,
-        local_state: GlobalState | None = None,
+        local_state: StateGraph | None = None,
         config: RunnableConfig | None = None,
         logger=None,
     ):
@@ -127,6 +128,7 @@ class Supervisor(BaseAgent):
             supervisor_name="Supervisor",
             add_handoff_messages=True,
             add_handoff_back_messages=True,
+            parallel_tool_calls=True,
             response_format=FinalResponse,
             output_mode="full_history",
         )
