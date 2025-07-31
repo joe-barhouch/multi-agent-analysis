@@ -2,7 +2,7 @@
 
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AgentType(str, Enum):
@@ -28,7 +28,8 @@ class TaskStatus(str, Enum):
 class Task(BaseModel):
     """Task model for workflow management."""
 
-    id: str
-    description: str
-    agent: str
-    status: TaskStatus = TaskStatus.PENDING
+    id: int = Field(..., description="Unique identifier for the task starting at 1")
+    description: str = Field(..., description="Description of the task to be performed")
+    status: TaskStatus = Field(
+        TaskStatus.PENDING, description="Current status of the task"
+    )

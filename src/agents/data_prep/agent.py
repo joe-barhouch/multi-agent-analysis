@@ -6,6 +6,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langchain_sandbox import PyodideSandboxTool
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import StateGraph
 from langgraph.prebuilt import create_react_agent
 from openai import OpenAI
 
@@ -26,7 +27,7 @@ class DataPrepAgent(BaseAgent):
         name: str,
         global_state: GlobalState,
         data_manager: DataManager,
-        local_state: GlobalState | None = None,
+        local_state: StateGraph | None = None,
         config: RunnableConfig | None = None,
         logger=None,
     ):
@@ -151,7 +152,6 @@ class DataPrepAgent(BaseAgent):
         return code_model
 
     async def run_code_interpreter(self) -> None:
-
         code_model = self.setup_responses()
         # Maintain conversation context
         messages = []
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     load_dotenv()
 
     global_state = GlobalState(
-        user_query="Compute the average of 3215 - cos(45)", thread_id=1
+        user_query="Compute the average of 3215 - cos(45)",
     )
 
     data_manager = DataManager("financial_data.db")

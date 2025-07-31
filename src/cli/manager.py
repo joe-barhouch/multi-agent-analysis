@@ -129,7 +129,7 @@ class CLIManager:
                 tool_details,
                 title="🔧 [bold magenta]Tool Details[/bold magenta]",
                 border_style="magenta",
-                padding=(1, 1)
+                padding=(1, 1),
             )
             self.console.print(tool_details_panel)
 
@@ -142,7 +142,7 @@ class CLIManager:
                     tool_table,
                     title="🔧 [bold cyan]Tool Calls Details[/bold cyan]",
                     border_style="cyan",
-                    padding=(1, 1)
+                    padding=(1, 1),
                 )
                 self.console.print(tool_panel)
 

@@ -24,6 +24,7 @@ When a user query is received, follow these steps:
 6. Present the results to the user in a clear and concise manner.
 
 Always provide your thought process and decisions within <thought_process> tags. Present the final answer or results within <result> tags. Use the structured output format to display correctly.
+Alawys format end results by Bullet Points and markown. For tables use markdown tables.
 
 
 Now, please process the following user query:

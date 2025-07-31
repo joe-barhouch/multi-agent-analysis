@@ -3,11 +3,12 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import Tool
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
-from src.agents.interpreter.models import QueryInterpretation
-from src.agents.interpreter.prompts import INTERPRETER_PROMPT
+from src.agents.interpreter.models import Plan, QueryInterpretation
+from src.agents.interpreter.prompts import INTERPRETER_PROMPT, PLAN_PROMPT
 from src.core.base_agent import BaseAgent
 from src.core.models import AgentResult
 from src.core.state import GlobalState
@@ -21,7 +22,7 @@ class InterpreterAgent(BaseAgent):
         self,
         name: str,
         global_state: GlobalState,
-        local_state: GlobalState | None = None,
+        local_state: dict | None = None,
         config: RunnableConfig | None = None,
         logger=None,
     ):
@@ -39,10 +40,12 @@ class InterpreterAgent(BaseAgent):
         self.name = name
         self.create_workflow()
 
-    def create_workflow(self) -> None:
+    def _old_create_workflow(self) -> None:
         """Create the workflow for the data preparation agent."""
         # Input validation
         self.validate_input()
+
+        # workflow = StateGraph(GraphState, AgentConfig)
 
         model = self.config.get("configurable", {}).get("model")
         if model is None:
@@ -85,6 +88,56 @@ class InterpreterAgent(BaseAgent):
             name=self.name,
         )
 
+    def create_workflow(self) -> None:
+        """Create Interpreter workflow."""
+        model = self.config.get("configurable", {}).get("model")
+
+        tools = [
+            Tool(
+                name="create_plan",
+                func=self.create_plan,
+                coroutine=self.create_plan,
+                description="Create a structured plan based on the user's query and chat history.",
+            ),
+            Tool(
+                name="interpret_question",
+                func=self.interpret_question,
+                coroutine=self.interpret_question,
+                description="Interpret the user's question to extract intent, entities, and metrics.",
+            ),
+        ]
+
+        human_prompt = """Here is the user's query:
+        <user_query>
+        {QUERY}
+        </user_query>
+        And here is the chat history:
+        <chat_history>
+        {CHAT_HISTORY}
+        </chat_history>
+        """
+
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                SystemMessage(INTERPRETER_PROMPT),
+                HumanMessage(
+                    human_prompt.format(
+                        QUERY=self.global_state.get("user_query", ""),
+                        CHAT_HISTORY=self.global_state.get("conversation_history", []),
+                    )
+                ),
+            ]
+        )
+
+        workflow = create_react_agent(
+            model=model,
+            tools=tools,
+            prompt=prompt,
+            name=self.name,
+        )
+
+        self.workflow = workflow
+
     async def execute(self) -> AgentResult:
         """Execute data preparation tasks."""
         self.log_activity("Executing data preparation tasks.")
@@ -111,9 +164,19 @@ class InterpreterAgent(BaseAgent):
                 metadata={"agent_name": self.name},
             )
 
-        response = await self.workflow.ainvoke(
-            {"messages": [HumanMessage(content=query)]}
-        )
+        breakpoint()
+        # response = await self.workflow.ainvoke(
+        #     {"messages": [HumanMessage(content=query)]}
+        # )
+
+        async for chunk in self.workflow.astream(
+            {"messages": [HumanMessage(content=query)]},
+            config=self.config,
+        ):
+            response = chunk
+            print(response)
+
+        breakpoint()
 
         # Placeholder for actual implementation
         return AgentResult(
@@ -123,6 +186,107 @@ class InterpreterAgent(BaseAgent):
             metadata={"agent_name": self.name},
         )
 
+    async def create_plan(self, state, config):
+        """Create a plan based on the current state."""
+        self.log_activity("Creating plan based on current state.")
+
+        # Use the workflow to create a plan
+        model = config.get("configurable", {}).get("model")
+        query = state.get("user_query", "")
+
+        chat_history = state.get("conversation_history", [])
+
+        structured_model = model.with_structured_output(schema=Plan)
+        human_prompt = """Here is the user's query:
+        <user_query>
+        {QUERY}
+        </user_query>
+
+        <query_interpretation>
+        Here is the structured interpretation of the query:
+        {QUERY_INTERPRETATION}
+        </query_interpretation>
+
+        And here is the chat history:
+        <chat_history>
+        {CHAT_HISTORY}
+        </chat_history>
+        """
+
+        template = ChatPromptTemplate.from_messages(
+            [
+                SystemMessage(
+                    PLAN_PROMPT.format(
+                        QUERY=query,
+                        CHAT_HISTORY=chat_history,
+                        QUERY_INTERPRETATION=state.get(
+                            "interpreted_query", state.get("user_query")
+                        ),
+                    )
+                ),
+                HumanMessage(human_prompt),
+            ]
+        )
+
+        chain = template | structured_model
+
+        plan = await chain.ainvoke(
+            {
+                "QUERY": query,
+                "CHAT_HISTORY": chat_history,
+            }
+        )
+
+        self.log_activity(f"Plan created: {plan}")
+
+        return {
+            "plan": plan,
+        }
+
+    async def interpret_question(self, state, config):
+        """Interpret Question"""
+        self.log_activity("Interpreting user question.")
+        model = config.get("configurable", {}).get("model")
+        query = state.get("user_query", "")
+
+        chat_history = state.get("conversation_history", [])
+
+        structured_model = model.with_structured_output(schema=QueryInterpretation)
+        human_prompt = """Here is the user's query:
+        <user_query>
+        {QUERY}
+        </user_query>
+
+        And here is the chat history:
+        <chat_history>
+        {CHAT_HISTORY}
+        </chat_history>
+        """
+
+        template = ChatPromptTemplate.from_messages(
+            [
+                SystemMessage(
+                    INTERPRETER_PROMPT.format(QUERY=query, CHAT_HISTORY=chat_history)
+                ),
+                HumanMessage(human_prompt),
+            ]
+        )
+
+        chain = template | structured_model
+
+        interpretation = await chain.ainvoke(
+            {
+                "QUERY": query,
+                "CHAT_HISTORY": chat_history,
+            }
+        )
+
+        self.log_activity(f"Interpretation created: {interpretation}")
+
+        return {
+            "interpretation": interpretation,
+        }
+
     def validate_input(self) -> None:
         """Validate the input for the agent."""
         if not self.config:
@@ -130,3 +294,30 @@ class InterpreterAgent(BaseAgent):
         if "query" not in self.config.get("configurable", {}):
             raise ValueError("Query must be provided in the configuration.")
         self.log_activity("Input validation passed for Interpreter Agent.")
+
+
+async def main():
+    """Main function to run the Interpreter Agent."""
+    agent = InterpreterAgent(
+        name="Interpreter",
+        global_state=GlobalState(
+            user_query="Show me the top 3 companies by revenue in 2005"
+        ),
+        local_state=None,
+        config={
+            "configurable": {
+                "model": ChatOpenAI(model="gpt-4.1-mini", temperature=0.0),
+                "thread-id": "thread-1",
+            },
+            "recursion_limit": 5,
+        },
+    )
+    result = await agent.execute()
+    print(result)
+
+
+if __name__ == "__main__":
+    # Example usage
+    import asyncio
+
+    asyncio.run(main())
