@@ -15,7 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from st_cb_handler import get_streamlit_cb
 
-from src.agents.data_manager import DataManager
+from src.agents.database_manager import create_snowflake_manager
 from src.agents.supervisor.agent import Supervisor
 from src.core.runner import AgentRunner
 from streamlit_app.formatters import StreamlitFormatter
@@ -132,12 +132,6 @@ class StreamlitApp:
             help="Enter your OpenAI API key for agent operations",
         )
 
-        # Database Configuration
-        db_path = st.sidebar.text_input(
-            "Database Path",
-            value="financial_data.db",
-            help="Path to the SQLite database",
-        )
 
         # System Status
         st.sidebar.markdown("### 📊 System Status")
@@ -145,7 +139,7 @@ class StreamlitApp:
         # Initialize components if not already done
         if not st.session_state.agent_runner or not st.session_state.data_manager:
             try:
-                st.session_state.data_manager = DataManager(path=db_path)
+                st.session_state.data_manager = create_snowflake_manager()
                 st.session_state.agent_runner = AgentRunner(api_key=api_key)
 
                 if not st.session_state.session_context:
@@ -173,18 +167,26 @@ class StreamlitApp:
                 )
             else:
                 st.markdown(
-                    '<div class="failed-badge">API Key ❌</div>', unsafe_allow_html=True
+                    '<div class="failed-badge">API Key ❌</div>',
+                    unsafe_allow_html=True
                 )
 
         with col2:
-            if os.path.exists(db_path):
+            # Check Snowflake connection status
+            try:
+                if st.session_state.data_manager and st.session_state.data_manager.test_connection():
+                    st.markdown(
+                        '<div class="success-badge">Snowflake ✅</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        '<div class="failed-badge">Snowflake ❌</div>',
+                        unsafe_allow_html=True,
+                    )
+            except Exception:
                 st.markdown(
-                    '<div class="success-badge">Database ✅</div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    '<div class="failed-badge">Database ❌</div>',
+                    '<div class="failed-badge">Snowflake ❌</div>',
                     unsafe_allow_html=True,
                 )
 

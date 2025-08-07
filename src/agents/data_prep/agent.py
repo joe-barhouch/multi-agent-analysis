@@ -10,7 +10,7 @@ from langgraph.graph import StateGraph
 from langgraph.prebuilt import create_react_agent
 from openai import OpenAI
 
-from src.agents.data_manager import DataManager
+from src.agents.database_manager import SnowflakeManager as DataManager
 from src.core.base_agent import BaseAgent
 from src.core.models import AgentResult
 from src.core.state import GlobalState
@@ -78,6 +78,8 @@ class DataPrepAgent(BaseAgent):
 
         toolkit = SQLDatabaseToolkit(db=self.data_manager.db, llm=model)
         sqlite_tools = toolkit.get_tools()
+        
+        # Try to create sandbox tool, but make it optional for testing
         sandbox_tool = PyodideSandboxTool(
             # Allow Pyodide to install python packages that
             # might be required.
@@ -89,19 +91,23 @@ class DataPrepAgent(BaseAgent):
         # sandbox_tool = self.setup_responses()
 
         # Tool descriptions
-        tool_info = (
-            "\n".join(
-                f"<tool>{tool.name}: {tool.description}</tool>" for tool in sqlite_tools
-            )
-            + f"<tool>{sandbox_tool.name}: {sandbox_tool.description}</tool>"
+        tool_info = "\n".join(
+            f"<tool>{tool.name}: {tool.description}</tool>" 
+            for tool in sqlite_tools
         )
+        if sandbox_tool:
+            tool_info += f"<tool>{sandbox_tool.name}: {sandbox_tool.description}</tool>"
 
         print(f"\nTool info: {tool_info}")
 
+        # Create tools list
+        tools = list(sqlite_tools)
+        if sandbox_tool:
+            tools.append(sandbox_tool)
+
         self.workflow = create_react_agent(
             model=model,
-            # tools=[*sqlite_tools, sandbox_tool],
-            tools=[*sqlite_tools],
+            tools=tools,
             prompt=DATA_PREP_PROMPT.format(
                 TOOLS=tool_info,
                 DATA_SOURCES="""Sources: 
