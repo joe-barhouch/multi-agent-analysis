@@ -2,18 +2,13 @@
 
 import argparse
 import asyncio
-import os
 import sys
 
-from dotenv import load_dotenv
-
-from src.agents.data_manager import DataManager
+from src.agents.database_manager import create_snowflake_manager
 from src.agents.supervisor.agent import Supervisor
 from src.cli.manager import CLIManager
+from src.config import OPENAI_API_KEY
 from src.core.runner import AgentRunner
-
-# Load environment variables
-load_dotenv()
 
 
 async def main(verbose: bool = False) -> None:
@@ -24,18 +19,20 @@ async def main(verbose: bool = False) -> None:
     """
     # Initialize components
     cli = CLIManager(verbose=verbose)
-    data_manager = DataManager(path="financial_data.db")
+    # Use Snowflake connection instead of SQLite
+    data_manager = create_snowflake_manager()
 
     # Get API key and initialize runner
-    api_key = os.getenv("OPENAI_API_KEY")
-    runner = AgentRunner(api_key=api_key)
+    runner = AgentRunner(api_key=OPENAI_API_KEY)
 
     # Display startup information
     cli.print_banner()
+    db_info = (f"Snowflake: {data_manager.config['database']}/"
+               f"{data_manager.config['schema']}")
     cli.print_configuration(
-        has_api_key=bool(api_key),
+        has_api_key=bool(OPENAI_API_KEY),
         has_model=bool(runner.model),
-        db_path=data_manager.path,
+        db_path=db_info,
     )
     cli.print_ready_message()
 
@@ -77,7 +74,7 @@ async def main(verbose: bool = False) -> None:
             cli.print_results(result)
 
             # Show tips if needed
-            if not result.success and not api_key:
+            if not result.success and not OPENAI_API_KEY:
                 cli.print_tip(
                     "Set OPENAI_API_KEY environment variable for full functionality."
                 )

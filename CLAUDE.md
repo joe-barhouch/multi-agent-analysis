@@ -7,11 +7,11 @@ A multi-agent system for financial data analysis with supervisor coordination, q
 - **Supervisor Agent**: Coordinates all tasks and agents
 - **Interpreter Agent**: Processes and interprets user queries
 - **Data Prep Agent**: Handles data preparation tasks
-- **Data Manager**: Manages SQLite database operations
+- **Data Manager**: Manages Snowflake database operations
 
 ## Configuration
 - **Model**: GPT-4.1-mini (OpenAI)
-- **Database**: SQLite (financial_data.db)
+- **Database**: Snowflake (INVEST_NEXT_DEV/GENAI)
 - **Framework**: LangChain + LangGraph
 - **Environment**: Python with UV package manager
 

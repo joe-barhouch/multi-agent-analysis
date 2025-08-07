@@ -31,7 +31,7 @@ A web-based chat interface for the Multi-Agent Financial Analysis System, provid
 - Python 3.8+
 - All main project dependencies installed
 - OpenAI API key (for agent operations)
-- SQLite database (`financial_data.db`)
+- Snowflake database access (INVEST_NEXT_DEV/GENAI)
 
 ### Installation
 
@@ -134,7 +134,7 @@ Each query result includes expandable sections for:
 ### Common Issues
 1. **Import Errors**: Ensure you're in the correct directory and have all dependencies
 2. **API Key Issues**: Verify your OpenAI API key is correctly set
-3. **Database Errors**: Check that `financial_data.db` exists and is accessible
+3. **Database Errors**: Check that Snowflake connection is properly configured with credentials
 4. **Port Conflicts**: Use `streamlit run app.py --server.port 8502` for different port
 
 ### Debug Mode
