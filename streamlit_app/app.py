@@ -132,7 +132,6 @@ class StreamlitApp:
             help="Enter your OpenAI API key for agent operations",
         )
 
-
         # System Status
         st.sidebar.markdown("### 📊 System Status")
 
@@ -167,14 +166,16 @@ class StreamlitApp:
                 )
             else:
                 st.markdown(
-                    '<div class="failed-badge">API Key ❌</div>',
-                    unsafe_allow_html=True
+                    '<div class="failed-badge">API Key ❌</div>', unsafe_allow_html=True
                 )
 
         with col2:
             # Check Snowflake connection status
             try:
-                if st.session_state.data_manager and st.session_state.data_manager.test_connection():
+                if (
+                    st.session_state.data_manager
+                    and st.session_state.data_manager.test_connection()
+                ):
                     st.markdown(
                         '<div class="success-badge">Snowflake ✅</div>',
                         unsafe_allow_html=True,
@@ -277,7 +278,7 @@ class StreamlitApp:
 
                 supervisor = Supervisor(
                     name=name,
-                    global_state=global_state,
+                    state=global_state,
                     data_manager=st.session_state.data_manager,
                     config=config,
                     streaming=False,

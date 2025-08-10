@@ -2,14 +2,16 @@
 
 from .base_agent import BaseAgent
 from .models import AgentResult
-from .state import GlobalState, WidgetDataRequirements, WidgetSpec
-from .types import AgentType
+from .state import AgentConfig, GlobalState
+from .types import AgentType, Plan, QueryInterpretation, Task
 
 __all__ = [
     "BaseAgent",
     "GlobalState",
-    "WidgetSpec",
-    "WidgetDataRequirements",
     "AgentResult",
     "AgentType",
+    "Plan",
+    "QueryInterpretation",
+    "Task",
+    "AgentConfig",
 ]

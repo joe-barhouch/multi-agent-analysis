@@ -2,11 +2,12 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import TypedDict, Union
+from typing import Union
 
 from langchain_core.runnables import RunnableConfig
 
 from .models import AgentResult
+from .state import GlobalState
 from .types import AgentType
 
 
@@ -17,18 +18,22 @@ class BaseAgent(ABC):
         self,
         agent_type: AgentType,
         name: str,
+        state: GlobalState,
         streaming: bool = False,
-        state: Union[TypedDict, None] = None,
         config: Union[RunnableConfig, None] = None,
         logger: Union[logging.Logger, None] = logging.getLogger(f"{__name__}"),
+        description: str = "",
     ):
         """Initialize the base agent.
 
         Args:
             agent_type: Type of the agent (e.g., planner, executor)
             name: Unique name for the agent
-            state: Current global state of the system
-
+            state: Global state of the system shared across all agents
+            streaming: Enable streaming mode
+            config: LangChain runnable configuration
+            logger: Logger instance
+            description: Agent description
         """
         self.agent_type = agent_type
         self.name = name
@@ -36,6 +41,7 @@ class BaseAgent(ABC):
         self.config = config or RunnableConfig()
         self.logger = logger
         self.streaming = streaming
+        self.description = description
 
     @abstractmethod
     def create_workflow(self) -> None:
@@ -61,11 +67,16 @@ class BaseAgent(ABC):
     def validate_input(self) -> None:
         """
         Validate that the agent can process the current state.
-
         """
         if not self.state:
             self.log_activity("Invalid state: Global state is None.", level="error")
             raise ValueError("Global state cannot be None.")
+
+        if not isinstance(self.state, dict):
+            self.log_activity(
+                "Invalid state: State must be a GlobalState dictionary.", level="error"
+            )
+            raise ValueError("State must be a GlobalState dictionary.")
 
     def log_activity(self, message: str, level: str = "info") -> None:
         """
@@ -79,3 +90,7 @@ class BaseAgent(ABC):
             getattr(self.logger, level)(f"[{self.name}] {message}")
         else:
             print(f"[{self.name}] {level.upper()}: {message}")
+
+    def get_info(self) -> str:
+        """Return a string of the agent's name and description."""
+        return f"Agent Name: {self.name}\nDescription: {self.description}\nType: {self.agent_type}"

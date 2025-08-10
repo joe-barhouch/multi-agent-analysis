@@ -69,40 +69,36 @@ class AgentRunner:
         self, query: str, session: SessionContext
     ) -> "GlobalState":
         """Create a fresh global state for a query."""
-        from src.core.state import GlobalState
 
         return GlobalState(
             user_query=query,
-            session_id=session.session_id,
             conversation_history=session.conversation_history,
-            max_messages=session.max_messages,
-            enable_trimming=True,
-            interpreted_query=None,
-            todo_plan=[],
-            current_task=None,
-            dashboard_layout={},
-            widget_specs={},
-            widget_data_queries={},
-            available_tables=[],
-            created_subtables=[],
-            data_descriptions={},
-            errors=[],
-            warnings=[],
-            current_agent=None,
-            agent_history=[],
+            messages=[],
         )
 
     def _extract_ai_response(self, result_data: Dict[str, Any]) -> Optional[str]:
         """Extract clean AI response from result."""
         try:
-            if not result_data or "message" not in result_data:
+            if not result_data:
                 return None
 
-            messages = result_data["message"].get("messages", [])
+            # NOTE: Handle new supervisor response format - check for "response" field first
+            if "response" in result_data and result_data["response"]:
+                return result_data["response"]
 
-            for message in reversed(messages):
-                if isinstance(message, AIMessage):
-                    return message.content
+            # NOTE: Handle both old and new message structures for backward compatibility
+            messages = None
+            if "message" in result_data and isinstance(result_data["message"], dict):
+                # Old format: {"message": {"messages": [...]}}
+                messages = result_data["message"].get("messages", [])
+            elif "messages" in result_data:
+                # New format: {"messages": [...]}
+                messages = result_data["messages"]
+
+            if messages:
+                for message in reversed(messages):
+                    if isinstance(message, AIMessage):
+                        return message.content
 
             return None
         except Exception:
@@ -113,7 +109,21 @@ class AgentRunner:
     ) -> Optional[Dict[str, int]]:
         """Extract token usage information."""
         try:
-            messages = result_data["message"].get("messages", [])
+            if not result_data:
+                return None
+
+            # NOTE: Handle both old and new message structures for backward compatibility
+            messages = None
+            if "message" in result_data and isinstance(result_data["message"], dict):
+                # Old format: {"message": {"messages": [...]}}
+                messages = result_data["message"].get("messages", [])
+            elif "messages" in result_data:
+                # New format: {"messages": [...]}
+                messages = result_data["messages"]
+
+            if not messages:
+                return None
+
             for message in reversed(messages):
                 if isinstance(message, AIMessage) and hasattr(
                     message, "usage_metadata"
@@ -131,10 +141,21 @@ class AgentRunner:
     def _extract_agent_flow(self, result_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract agent coordination flow."""
         try:
-            if not result_data or "message" not in result_data:
+            if not result_data:
                 return []
 
-            messages = result_data["message"].get("messages", [])
+            # NOTE: Handle both old and new message structures for backward compatibility
+            messages = None
+            if "message" in result_data and isinstance(result_data["message"], dict):
+                # Old format: {"message": {"messages": [...]}}
+                messages = result_data["message"].get("messages", [])
+            elif "messages" in result_data:
+                # New format: {"messages": [...]}
+                messages = result_data["messages"]
+
+            if not messages:
+                return []
+
             flow = []
 
             for message in messages:
@@ -147,7 +168,8 @@ class AgentRunner:
                         }
                     )
                 elif isinstance(message, AIMessage):
-                    agent_name = getattr(message, "name", "Unknown")
+                    # NOTE: Improved agent name extraction - fallback to "Supervisor" if no name
+                    agent_name = getattr(message, "name", "Supervisor")
                     flow.append(
                         {
                             "type": "agent_response",
@@ -169,37 +191,21 @@ class AgentRunner:
         except Exception:
             return []
 
-    # def _extract_tool_calls(self, result_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    #     """Extract tool usage information."""
-    #     try:
-    #         if not result_data or "message" not in result_data:
-    #             return []
-    #
-    #         messages = result_data["message"].get("messages", [])
-    #         tools_used = []
-    #
-    #         for message in messages:
-    #             if isinstance(message, AIMessage) and hasattr(message, "tool_calls"):
-    #                 for tool_call in message.tool_calls:
-    #                     tools_used.append(
-    #                         {
-    #                             "name": tool_call.get("name", "Unknown"),
-    #                             "args": tool_call.get("args", {}),
-    #                             "id": tool_call.get("id", ""),
-    #                         }
-    #                     )
-    #
-    #         return tools_used
-    #     except Exception:
-    #         return []
-
     def _extract_tool_calls(self, result_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract comprehensive tool usage information, including agent and result."""
         try:
-            if not result_data or "message" not in result_data:
+            if not result_data:
                 return []
 
-            messages = result_data["message"].get("messages", [])
+            # NOTE: Handle both old and new message structures for backward compatibility
+            messages = None
+            if "message" in result_data and isinstance(result_data["message"], dict):
+                # Old format: {"message": {"messages": [...]}}
+                messages = result_data["message"].get("messages", [])
+            elif "messages" in result_data:
+                # New format: {"messages": [...]}
+                messages = result_data["messages"]
+
             if not messages:
                 return []
 
@@ -297,7 +303,7 @@ class AgentRunner:
             checkpointer = metadata.get("checkpointer")
 
             if checkpointer and hasattr(checkpointer, "storage"):
-                print(f"DEBUG: Attempting nested tool extraction from checkpointer")
+                print("DEBUG: Attempting nested tool extraction from checkpointer")
 
                 # Iterate through checkpoint storage
                 for key, checkpoint_data in checkpointer.storage.items():
@@ -354,26 +360,12 @@ class AgentRunner:
         """Extract the final global state from supervisor execution."""
         try:
             # Try to get the global state from the supervisor agent
-            if hasattr(supervisor, "global_state"):
-                return supervisor.global_state
+            if hasattr(supervisor, "state"):
+                return supervisor.state
 
             # Alternative: try to extract from result data
-            if result_data and "global_state" in result_data:
-                return result_data["global_state"]
-
-            # If supervisor has a workflow with state
-            if hasattr(supervisor, "workflow") and hasattr(
-                supervisor.workflow, "get_state"
-            ):
-                try:
-                    workflow_state = supervisor.workflow.get_state()
-                    if workflow_state and hasattr(workflow_state, "values"):
-                        # Look for global state in workflow values
-                        values = workflow_state.values
-                        if isinstance(values, dict) and "global_state" in values:
-                            return values["global_state"]
-                except Exception:
-                    pass
+            if result_data and "state" in result_data:
+                return result_data["state"]
 
             return None
 
@@ -459,9 +451,19 @@ class AgentRunner:
             )
 
             # Enhanced Debug: Print comprehensive message analysis
-            if result.data and "message" in result.data:
-                messages = result.data["message"].get("messages", [])
-                print(f"\n=== DEEP DEBUG: Message Analysis ===")
+            # NOTE: Handle both old and new message structures for debugging
+            debug_messages = None
+            if result.data:
+                if "message" in result.data and isinstance(
+                    result.data["message"], dict
+                ):
+                    debug_messages = result.data["message"].get("messages", [])
+                elif "messages" in result.data:
+                    debug_messages = result.data["messages"]
+
+            if debug_messages:
+                messages = debug_messages
+                print("\n=== DEEP DEBUG: Message Analysis ===")
                 print(f"Found {len(messages)} messages in supervisor workflow:")
 
                 for i, msg in enumerate(messages):

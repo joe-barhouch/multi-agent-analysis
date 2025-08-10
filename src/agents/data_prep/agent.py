@@ -5,10 +5,8 @@ from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langchain_sandbox import PyodideSandboxTool
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph import StateGraph
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
-from openai import OpenAI
 
 from src.agents.database_manager import SnowflakeManager as DataManager
 from src.core.base_agent import BaseAgent
@@ -25,9 +23,8 @@ class DataPrepAgent(BaseAgent):
     def __init__(
         self,
         name: str,
-        global_state: GlobalState,
+        state: GlobalState,
         data_manager: DataManager,
-        local_state: StateGraph | None = None,
         config: RunnableConfig | None = None,
         logger=None,
     ):
@@ -35,15 +32,11 @@ class DataPrepAgent(BaseAgent):
         super().__init__(
             agent_type=AgentType.DATA_PREP,
             name=name,
-            state=local_state,
+            state=state,
             config=config,
             logger=logger,
         )
-        self.local_state = local_state
-        self.global_state = global_state
-
         self.data_manager = data_manager
-
         self.name = name
 
         self.create_workflow()
@@ -54,56 +47,31 @@ class DataPrepAgent(BaseAgent):
         self.validate_input()
 
         model = self.config.get("configurable", {}).get("model")
-        if model is None:
-            # Try to create model using API key from config
-            api_key = self.config.get("configurable", {}).get("api_key")
-            if api_key:
-                try:
-                    model = ChatOpenAI(
-                        model="gpt-4.1-mini", temperature=0, api_key=api_key
-                    )
-                except Exception as e:
-                    self.log_activity(
-                        f"Could not create OpenAI model: {e}", level="warning"
-                    )
-                    self.workflow = None
-                    return
-            else:
-                self.log_activity(
-                    "No API key provided - workflow will not be created",
-                    level="warning",
-                )
-                self.workflow = None
-                return
 
         toolkit = SQLDatabaseToolkit(db=self.data_manager.db, llm=model)
         sqlite_tools = toolkit.get_tools()
-        
-        # Try to create sandbox tool, but make it optional for testing
-        sandbox_tool = PyodideSandboxTool(
-            # Allow Pyodide to install python packages that
-            # might be required.
-            allow_net=True,
-            stateful=True,
-        )
 
-        # sandbox_tool = self.setup_code_interpreter()
-        # sandbox_tool = self.setup_responses()
+        # Try to create sandbox tool, but make it optional for testing
+        # sandbox_tool = PyodideSandboxTool(
+        #     # Allow Pyodide to install python packages that
+        #     # might be required.
+        #     allow_net=True,
+        #     stateful=True,
+        # )
 
         # Tool descriptions
         tool_info = "\n".join(
-            f"<tool>{tool.name}: {tool.description}</tool>" 
-            for tool in sqlite_tools
+            f"<tool>{tool.name}: {tool.description}</tool>" for tool in sqlite_tools
         )
-        if sandbox_tool:
-            tool_info += f"<tool>{sandbox_tool.name}: {sandbox_tool.description}</tool>"
+        # if sandbox_tool:
+        #     tool_info += f"<tool>{sandbox_tool.name}: {sandbox_tool.description}</tool>"
 
         print(f"\nTool info: {tool_info}")
 
         # Create tools list
         tools = list(sqlite_tools)
-        if sandbox_tool:
-            tools.append(sandbox_tool)
+        # if sandbox_tool:
+        #     tools.append(sandbox_tool)
 
         self.workflow = create_react_agent(
             model=model,
@@ -116,80 +84,11 @@ class DataPrepAgent(BaseAgent):
                    """,
             ),
             name=self.name,
-            checkpointer=InMemorySaver(),  # Use in-memory saver for simplicity
+            checkpointer=MemorySaver(),  # Use in-memory saver for simplicity
         )
         self.log_activity("Creating workflow for data preparation tasks.")
 
         return self.workflow
-
-    def setup_responses(self) -> None:
-        """Setup Code Interpreter tool with persistent context."""
-        model = self.config.get("configurable", {}).get("model")
-        client = OpenAI()
-
-        # file = client.files.create(
-        #     file=open(
-        #         "/Users/joe/joe/personal/multi-agent-analysis/data/finance_economics_dataset.csv",
-        #         "rb",
-        #     ),
-        #     purpose="assistants",
-        # )
-
-        container = client.containers.create(name="code_interpreter_container")
-
-        chat_model = ChatOpenAI(
-            model=model.model_name,
-            output_version="responses/v1",
-            use_responses_api=True,
-            use_previous_response_id=True,
-        )
-        code_model = chat_model.bind_tools(
-            [
-                {
-                    "type": "code_interpreter",
-                    "container": container.id,
-                    "files": ["file-AhTVPQ698NboD96RqD6MpX"],
-                },
-            ]
-        )
-
-        self.code_model = code_model
-
-        return code_model
-
-    async def run_code_interpreter(self) -> None:
-        code_model = self.setup_responses()
-        # Maintain conversation context
-        messages = []
-
-        questions = [
-            "Read the CSV file and explain the data in the file. (the finance_economics_dataset.csv)"
-            "save a monthly average of the close and return columns to a new csv"
-        ]
-
-        for q in questions:
-            # Add user message
-            messages.append(
-                HumanMessage(
-                    content=q,
-                    additional_kwargs={
-                        "attachments": [
-                            {
-                                "files": "file-AhTVPQ698NboD96RqD6MpX",
-                            }
-                        ]
-                    },
-                )
-            )
-
-            # Get response with full context
-            response = await code_model.ainvoke(messages, config=self.config)
-
-            # Add assistant response to maintain context
-            messages.append({"role": "assistant", "content": response.content})
-
-            self.log_activity(f"Code Interpreter response: {response.content}")
-            print(f"Code Interpreter response: {response.content}")
 
     async def execute(self) -> AgentResult:
         """Execute data preparation tasks."""
@@ -206,7 +105,7 @@ class DataPrepAgent(BaseAgent):
                 metadata={"agent_name": self.name},
             )
 
-        query = self.global_state.get("user_query", None)
+        query = self.state.get("user_query", None)
 
         if not query:
             self.log_activity("No query provided for data preparation.", level="error")
@@ -258,7 +157,7 @@ if __name__ == "__main__":
 
     agent = DataPrepAgent(
         name="DataPrepAgent",
-        global_state=global_state,
+        state=global_state,
         data_manager=data_manager,
         config=RunnableConfig(
             configurable={

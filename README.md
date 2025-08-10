@@ -1,12 +1,12 @@
 # Multi Agent BI - Agent Architecture
 
 ## Resources
+
 - Claude code SDK doc https://docs.anthropic.com/en/docs/claude-code/sdk
 - Claude code SDK github https://github.com/anthropics/claude-code-sdk-python
-- Langgraph multi agent: https://github.com/anthropics/claude-code-sdk-python
+- Langgraph multi agent:https://langchain-ai.github.io/langgraph/agents/multi-agent/?h=multi
 - Langgraph guides doc: https://langchain-ai.github.io/langgraph/guides/
 - Langgraph streaming https://langchain-ai.github.io/langgraph/how-tos/streaming/#supported-stream-modes
-  
 
 ## Overview
 
@@ -23,35 +23,35 @@ graph TB
         DataAgent["Data Agent<br/>• Build SQL<br/>• Generate Pandas Code<br/>• Execute Queries"]
         VisAgent["Visualization Agent<br/>• Design Layout<br/>• Select Widgets<br/>• Build Specs"]
         DataAnalyst["Data Analyst Agent<br/>• Apply Domain Rules<br/>• Recommend Metrics<br/>• Validate Calculations"]
-        
+
         Supervisor <--> QueryInterpreter
         Supervisor --> DataPrep
         Supervisor --> DataAgent
         Supervisor --> VisAgent
         Supervisor --> DataAnalyst
-        
+
         subgraph "Parallel Sub-Agents"
             SubAgent1["Widget 1<br/>Data Sub-Agent"]
             SubAgent2["Widget 2<br/>Data Sub-Agent"]
             SubAgent3["Widget N<br/>Data Sub-Agent"]
         end
-        
+
         DataAgent --> SubAgent1
         DataAgent --> SubAgent2
         DataAgent --> SubAgent3
     end
-    
+
     User["User Query"] --> Supervisor
     SubAgent1 --> Output["Dashboard<br/>with Data"]
     SubAgent2 --> Output
     SubAgent3 --> Output
     VisAgent --> Output
-    
+
     classDef supervisorClass fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff
     classDef agentClass fill:#7ED321,stroke:#5A9E18,stroke-width:2px,color:#fff
     classDef subAgentClass fill:#F5A623,stroke:#C77F1B,stroke-width:2px,color:#fff
     classDef ioClass fill:#BD10E0,stroke:#8B0AA5,stroke-width:2px,color:#fff
-    
+
     class Supervisor supervisorClass
     class QueryInterpreter,DataPrep,DataAgent,VisAgent,DataAnalyst agentClass
     class SubAgent1,SubAgent2,SubAgent3 subAgentClass
@@ -101,22 +101,22 @@ class GlobalState(TypedDict):
     user_query: str
     session_id: str
     conversation_history: List[Dict]
-    
+
     # Interpretation and planning
-    interpreted_query: Optional[QueryInterpretation]
+    query_interpretation: Optional[QueryInterpretation]
     todo_plan: List[Task]
     current_task: Optional[str]
-    
+
     # Dashboard state
     dashboard_layout: Dict
     widget_specs: Dict[str, WidgetSpec]
     widget_data_queries: Dict[str, Dict]  # {widget_id: {sql: str, pandas: str}}
-    
+
     # Data state
     available_tables: List[Dict]  # Schema information
     created_subtables: List[str]
     data_descriptions: Dict[str, str]
-    
+
     # Execution state
     errors: List[Dict]
     warnings: List[Dict]
@@ -132,7 +132,7 @@ class GlobalState(TypedDict):
 
 ```python
 class BuildPlanInput(BaseModel):
-    interpreted_query: QueryInterpretation
+    query_interpretation: QueryInterpretation
     current_state: Optional[Dict]  # Existing dashboard state
     conversation_history: List[Dict]
 
@@ -182,8 +182,6 @@ class QueryInterpretation(BaseModel):
 
 
 ```
-
-
 
 **Capabilities**:
 
@@ -280,7 +278,7 @@ class BuildDataForWidgetOutput(BaseModel):
 
 ```python
 class BuildWorkflowInput(BaseModel):
-    interpreted_query: QueryInterpretation
+    query_interpretation: QueryInterpretation
     available_widgets: List[str]
     design_principles: Dict
 
