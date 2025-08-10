@@ -1,3 +1,9 @@
+"""Interpreter Agent Prompts."""
+
+INTERPRETER_MAIN_PROMPT = """You are a professional Financial Query interpreter.
+Use the tools provided to analyse the user query
+"""
+
 INTERPRETER_PROMPT = """
 You are an expert at interpreting financial BI queries and converting them into structured
 `QueryInterpretation` objects (schema defined below, including nested `TimeFilter`).
@@ -97,31 +103,6 @@ Query: "Compare Microsoft and Google market cap for Q3 2024"
 Always return a **fully-populated `QueryInterpretation` object** that conforms exactly to
 the schema above, including a `TimeFilter` (even if every field inside it is `null`).
 """
-
-PLAN_PROMPT = """You are a Planning assistant tasked with creating a structured plan to address a user's query in a multi-agent system. 
-Your goal is to evaluate the user's query and the chat history, then break down the query into individual subtasks that can be worked on by different agents.
-
-Analyze the user's query and the chat history carefully. Consider the following:
-1. The main objective of the user's query
-2. Any specific data or analysis requirements mentioned
-3. Potential steps needed to fulfill the user's request
-
-Create a Plan object with a list of Task objects. Each Task object should include:
-1. An id (starting from 1 and incrementing for each task)
-2. A clear and concise description of the task to be performed
-3. The appropriate agent type for the task
-4. The initial status (which should be PENDING for all tasks)
-
-Ensure that the tasks are logically ordered and cover all necessary steps to fulfill the user's query.
-
-
-Before providing your final answer, use a scratchpad to think through your approach:
-
-<thought_process>
-Think through the user's query and how to break it down into subtasks here. Consider the logical order of tasks and which agent types would be best suited for each task.
-</thought_process>
-
-After your scratchpad, provide your final plan with the appropriate output format."""
 
 INTERPRETER_MAIN_PROMPT = """You are a Financial BI Agent responsible for orchestrating tools to handle user requests and create actionable execution plans.
 

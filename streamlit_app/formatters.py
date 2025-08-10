@@ -2,7 +2,7 @@
 Streamlit-specific formatters for displaying execution results in the web interface.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import pandas as pd
 import streamlit as st
@@ -237,7 +237,7 @@ class StreamlitFormatter:
             query = query.strip()
             query = " ".join(query.split())
             if len(query) > 100:
-                return query[:100] + "..."
+                return query + "..."
             return query
 
         if "table_names_to_use" in args:
@@ -246,8 +246,6 @@ class StreamlitFormatter:
             return f"Schema: {args['schema']}"
 
         args_str = str(args)
-        if len(args_str) > 100:
-            return args_str[:100] + "..."
         return args_str
 
     def _format_python_code(self, args: dict) -> str:
@@ -257,10 +255,9 @@ class StreamlitFormatter:
             lines = [line.strip() for line in code.split("\n") if line.strip()]
             if lines:
                 first_line = lines[0]
-                if len(first_line) > 80:
-                    return first_line[:80] + "..."
+
                 return first_line
-        return str(args)[:80]
+        return str(args)
 
     def _format_args(self, args: Any, max_length: int = 100) -> str:
         """Format tool arguments for display."""
@@ -282,17 +279,13 @@ class StreamlitFormatter:
             items = []
             for key, value in args.items():
                 if isinstance(value, str) and len(value) > 50:
-                    value = value[:50] + "..."
+                    value = value
                 items.append(f"{key}: {value}")
 
             args_str = ", ".join(items)
-            if len(args_str) > max_length:
-                return args_str[:max_length] + "..."
             return args_str
 
         args_str = str(args)
-        if len(args_str) > max_length:
-            return args_str[:max_length] + "..."
         return args_str
 
     def _format_result(self, result: Any, max_length: int = 80) -> str:
@@ -307,8 +300,6 @@ class StreamlitFormatter:
             lines = result_str.split("\n")
             for line in lines:
                 if line.strip() and not all(c in "-|+" for c in line.strip()):
-                    if len(line) > max_length:
-                        return line[: max_length - 3] + "..."
                     return line
 
         # Handle lists
@@ -319,15 +310,10 @@ class StreamlitFormatter:
                     preview = f"{items[0]}" + (
                         f" (+{len(items) - 1} more)" if len(items) > 1 else ""
                     )
-                    if len(preview) > max_length:
-                        return preview[: max_length - 3] + "..."
                     return preview
             except:
                 pass
 
-        # Default truncation
-        if len(result_str) > max_length:
-            return result_str[: max_length - 3] + "..."
         return result_str
 
     def display_global_state(self, global_state):
@@ -336,98 +322,113 @@ class StreamlitFormatter:
             st.info("No global state available.")
             return
 
-        # Session Information
-        st.markdown("### 🔍 Session Information")
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.metric("Session ID", global_state.get("session_id", "N/A"))
-        with col2:
-            st.metric("Current Agent", global_state.get("current_agent", "None"))
-        with col3:
-            st.metric(
-                "Query Count", len(global_state.get("conversation_history", [])) // 2
-            )
+        # Core Query Information
+        st.markdown("### 🔍 Query Information")
+        user_query = global_state.get("user_query", "")
+        if user_query:
+            st.info(f"**Current Query:** {user_query}")
+        else:
+            st.info("**Current Query:** None")
 
         # Conversation State
         with st.expander("💬 Conversation State", expanded=False):
             conversation_history = global_state.get("conversation_history", [])
-            max_messages = global_state.get("max_messages", 20)
-            enable_trimming = global_state.get("enable_trimming", False)
+            messages = global_state.get("messages", [])
 
-            col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
             with col1:
-                st.metric("Messages", len(conversation_history))
+                st.metric("Conversation History", len(conversation_history))
+                if conversation_history:
+                    st.markdown("**Recent Messages:**")
+                    for i, msg in enumerate(
+                        conversation_history[-3:]
+                    ):  # Last 3 messages
+                        msg_type = type(msg).__name__.replace("Message", "")
+                        msg_content = str(msg.content)[:100] + (
+                            "..." if len(str(msg.content)) > 100 else ""
+                        )
+                        st.markdown(f"• {msg_type}: {msg_content}")
+
             with col2:
-                st.metric("Max Messages", max_messages)
-            with col3:
-                st.info("Trimming: " + ("✅" if enable_trimming else "❌"))
+                st.metric("Total Messages", len(messages))
+                if messages:
+                    st.markdown("**Message Types:**")
+                    message_types = {}
+                    for msg in messages:
+                        msg_type = type(msg).__name__
+                        message_types[msg_type] = message_types.get(msg_type, 0) + 1
+                    for msg_type, count in message_types.items():
+                        st.markdown(f"• {msg_type}: {count}")
 
-        # Planning State
-        with st.expander("📋 Planning & Tasks", expanded=False):
-            current_task = global_state.get("current_task")
-            todo_plan = global_state.get("todo_plan", [])
+        # Interpretation & Planning State
+        with st.expander("🧠 Interpretation & Planning", expanded=False):
+            query_interpretation = global_state.get("query_interpretation")
+            plan = global_state.get("plan", {})
 
-            if current_task:
-                st.info(f"**Current Task:** {current_task}")
+            if query_interpretation:
+                st.success("**Query Interpretation:** Available")
+                # Show interpretation details if it's a dict
+                if isinstance(query_interpretation, dict):
+                    for key, value in query_interpretation.items():
+                        if isinstance(value, str) and len(value) > 100:
+                            value = value[:100] + "..."
+                        st.markdown(f"• **{key.replace('_', ' ').title()}:** {value}")
             else:
-                st.info("**Current Task:** None")
+                st.info("**Query Interpretation:** None")
 
-            if todo_plan:
-                st.markdown(f"**Todo Plan ({len(todo_plan)} items):**")
-                for i, task in enumerate(todo_plan, 1):
-                    if isinstance(task, dict):
-                        task_name = task.get("name", task.get("description", str(task)))
-                        task_status = task.get("status", "unknown")
-                        status_emoji = {
-                            "pending": "⏳",
-                            "in_progress": "🔄",
-                            "completed": "✅",
-                        }.get(task_status, "❓")
-                        st.markdown(f"{i}. {status_emoji} {task_name}")
-                    else:
-                        st.markdown(f"{i}. {task}")
+            if plan and plan is not None:
+                st.success(f"**Plan:** Available ({len(plan.tasks)} items)")
+                for task in plan.tasks:
+                    task_desc = task.description[:100] + (
+                        "..." if len(task.description) > 100 else ""
+                    )
+                    st.markdown(f"• **Task:** {task_desc}")
             else:
-                st.info("No planned tasks")
+                st.info("**Plan:** None")
 
         # Data State
         with st.expander("📊 Data State", expanded=False):
-            available_tables = global_state.get("available_tables", [])
-            created_subtables = global_state.get("created_subtables", [])
+            available_tables = global_state.get("available_tables")
             data_descriptions = global_state.get("data_descriptions", {})
 
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Available Tables", len(available_tables))
                 if available_tables:
-                    st.markdown("**Tables:**")
-                    for table in available_tables[:5]:  # Show first 5
-                        table_name = (
-                            table.get("name", str(table))
-                            if isinstance(table, dict)
-                            else str(table)
-                        )
-                        st.markdown(f"• {table_name}")
-                    if len(available_tables) > 5:
-                        st.markdown(f"... and {len(available_tables) - 5} more")
+                    if isinstance(available_tables, list):
+                        st.metric("Available Tables", len(available_tables))
+                        st.markdown("**Tables:**")
+                        for table in available_tables[:5]:  # Show first 5
+                            table_name = (
+                                table.get("name", str(table))
+                                if isinstance(table, dict)
+                                else str(table)
+                            )
+                            st.markdown(f"• {table_name}")
+                        if len(available_tables) > 5:
+                            st.markdown(f"... and {len(available_tables) - 5} more")
+                    elif isinstance(available_tables, dict):
+                        st.metric("Available Tables", len(available_tables))
+                        st.markdown("**Tables:**")
+                        for key, value in list(available_tables.items())[:5]:
+                            st.markdown(f"• **{key}:** {str(value)[:50]}...")
+                        if len(available_tables) > 5:
+                            st.markdown(f"... and {len(available_tables) - 5} more")
+                    else:
+                        st.info("**Available Tables:** DataInfo object")
+                else:
+                    st.info("**Available Tables:** None")
 
             with col2:
-                st.metric("Created Subtables", len(created_subtables))
-                if created_subtables:
-                    st.markdown("**Subtables:**")
-                    for subtable in created_subtables[:5]:
-                        st.markdown(f"• {subtable}")
-                    if len(created_subtables) > 5:
-                        st.markdown(f"... and {len(created_subtables) - 5} more")
-
-            if data_descriptions:
-                st.markdown("**Data Descriptions:**")
-                for name, desc in list(data_descriptions.items())[:3]:
-                    st.markdown(
-                        f"• **{name}:** {desc[:100]}{'...' if len(desc) > 100 else ''}"
-                    )
-                if len(data_descriptions) > 3:
-                    st.markdown(f"... and {len(data_descriptions) - 3} more")
+                if data_descriptions:
+                    st.metric("Data Descriptions", len(data_descriptions))
+                    st.markdown("**Descriptions:**")
+                    for name, desc in list(data_descriptions.items())[:3]:
+                        desc_preview = desc[:100] + "..." if len(desc) > 100 else desc
+                        st.markdown(f"• **{name}:** {desc_preview}")
+                    if len(data_descriptions) > 3:
+                        st.markdown(f"... and {len(data_descriptions) - 3} more")
+                else:
+                    st.info("**Data Descriptions:** None")
 
         # Dashboard State
         dashboard_layout = global_state.get("dashboard_layout", {})
@@ -447,13 +448,10 @@ class StreamlitFormatter:
         # Agent Communication
         with st.expander("🤖 Agent Communication", expanded=False):
             agent_history = global_state.get("agent_history", [])
-            current_agent = global_state.get("current_agent")
-
-            if current_agent:
-                st.info(f"**Active Agent:** {self.format_agent_name(current_agent)}")
 
             if agent_history:
-                st.markdown(f"**Agent History ({len(agent_history)} agents):**")
+                st.metric("Agent History", len(agent_history))
+                st.markdown("**Agent Flow:**")
                 agent_flow = " ➜ ".join(
                     [self.format_agent_name(agent) for agent in agent_history[-5:]]
                 )  # Last 5
@@ -461,7 +459,7 @@ class StreamlitFormatter:
                 if len(agent_history) > 5:
                     st.markdown(f"... and {len(agent_history) - 5} earlier agents")
             else:
-                st.info("No agent history")
+                st.info("**Agent History:** None")
 
         # Execution State
         errors = global_state.get("errors", [])
@@ -499,3 +497,5 @@ class StreamlitFormatter:
                             st.markdown(f"... and {len(warnings) - 3} more warnings")
                     else:
                         st.success("**Warnings:** None")
+        else:
+            st.success("✅ No errors or warnings")

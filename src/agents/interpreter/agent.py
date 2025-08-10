@@ -5,14 +5,13 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import Tool
 from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.prebuilt import create_react_agent
 
-from src.agents.interpreter.models import Plan, QueryInterpretation
-from src.agents.interpreter.prompts import INTERPRETER_PROMPT, PLAN_PROMPT
+from src.agents.interpreter.prompts import INTERPRETER_MAIN_PROMPT, INTERPRETER_PROMPT
+from src.core import GlobalState, QueryInterpretation
 from src.core.base_agent import BaseAgent
 from src.core.models import AgentResult
-from src.core.state import GlobalState
 from src.core.types import AgentType
 
 
@@ -22,22 +21,18 @@ class InterpreterAgent(BaseAgent):
     def __init__(
         self,
         name: str,
-        global_state: GlobalState,
-        local_state: dict | None = None,
+        state: GlobalState,
         config: RunnableConfig | None = None,
         logger=None,
     ):
-        """Initialize the Data Prep Agent."""
+        """Initialize the Interpreter Agent."""
         super().__init__(
             agent_type=AgentType.QUERY_INTERPRETER,
             name=name,
-            state=local_state,
+            state=state,
             config=config,
             logger=logger,
         )
-        self.local_state = local_state
-        self.global_state = global_state
-
         self.name = name
         self.create_workflow()
 
@@ -95,17 +90,11 @@ class InterpreterAgent(BaseAgent):
 
         tools = [
             Tool(
-                name="create_plan",
-                func=self.create_plan,
-                coroutine=self.create_plan,
-                description="Create a structured plan based on the user's query and chat history.",
-            ),
-            Tool(
                 name="interpret_question",
                 func=self.interpret_question,
                 coroutine=self.interpret_question,
                 description="Interpret the user's question to extract intent, entities, and metrics.",
-            ),
+            )
         ]
 
         human_prompt = """Here is the user's query:
@@ -120,11 +109,11 @@ class InterpreterAgent(BaseAgent):
 
         prompt = ChatPromptTemplate.from_messages(
             [
-                SystemMessage(INTERPRETER_PROMPT),
+                SystemMessage(INTERPRETER_MAIN_PROMPT),
                 HumanMessage(
                     human_prompt.format(
-                        QUERY=self.global_state.get("user_query", ""),
-                        CHAT_HISTORY=self.global_state.get("conversation_history", []),
+                        QUERY=self.state.get("user_query", ""),
+                        CHAT_HISTORY=self.state.get("conversation_history", []),
                     )
                 ),
             ]
@@ -155,7 +144,7 @@ class InterpreterAgent(BaseAgent):
                 metadata={"agent_name": self.name},
             )
 
-        query = self.global_state.get("user_query", None)
+        query = self.state.get("user_query", None)
 
         if not query:
             self.log_activity("No query provided for data preparation.", level="error")
@@ -178,77 +167,12 @@ class InterpreterAgent(BaseAgent):
         #     response = chunk
         #     print(response)
 
-        breakpoint()
-        # Placeholder for actual implementation
         return AgentResult(
             success=True,
             data={"message": response},
             error=None,
             metadata={"agent_name": self.name},
         )
-
-    async def create_plan(self, state, config=None):
-        """Create a plan based on the current state."""
-        self.log_activity("Creating plan based on current state.")
-
-        # Use the workflow to create a plan
-        if config:
-            model = config.get("configurable", {}).get("model")
-        else:
-            model = self.config.get("configurable", {}).get("model")
-
-        # query = state.get("user_query", "")
-        query = state
-
-        # chat_history = state.get("conversation_history", [])
-        chat_history = []
-
-        structured_model = model.with_structured_output(schema=Plan)
-        human_prompt = """Here is the user's query:
-        <user_query>
-        {QUERY}
-        </user_query>
-
-        <query_interpretation>
-        Here is the structured interpretation of the query:
-        {QUERY_INTERPRETATION}
-        </query_interpretation>
-
-        And here is the chat history:
-        <chat_history>
-        {CHAT_HISTORY}
-        </chat_history>
-        """
-
-        template = ChatPromptTemplate.from_messages(
-            [
-                SystemMessage(
-                    PLAN_PROMPT.format(
-                        QUERY=query,
-                        CHAT_HISTORY=chat_history,
-                        QUERY_INTERPRETATION=state.get(
-                            "interpreted_query", state.get("user_query")
-                        ),
-                    )
-                ),
-                HumanMessage(human_prompt),
-            ]
-        )
-
-        chain = template | structured_model
-
-        plan = await chain.ainvoke(
-            {
-                "QUERY": query,
-                "CHAT_HISTORY": chat_history,
-            }
-        )
-
-        self.log_activity(f"Plan created: {plan}")
-
-        return {
-            "plan": plan,
-        }
 
     async def interpret_question(self, state, config=None):
         """Interpret Question"""
@@ -296,6 +220,8 @@ class InterpreterAgent(BaseAgent):
 
         self.log_activity(f"Interpretation created: {interpretation}")
 
+        breakpoint()
+        self.state["query_interpretation"] = interpretation
         return {
             "interpretation": interpretation,
         }
@@ -313,10 +239,9 @@ async def main():
     """Main function to run the Interpreter Agent."""
     agent = InterpreterAgent(
         name="Interpreter",
-        global_state=GlobalState(
+        state=GlobalState(
             user_query="Show me the top 3 companies by revenue in 2005, then display bottom 5 by GDP growth"
         ),
-        local_state=None,
         config={
             "configurable": {
                 "model": ChatOpenAI(model="gpt-4.1-mini", temperature=0.0),
