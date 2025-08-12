@@ -7,10 +7,7 @@ from src.agents.data_manager import DatabaseConfig, DataManager
 # Example configurations for different database types
 
 # SQLite (existing default)
-sqlite_config = DatabaseConfig(
-    db_type="sqlite",
-    database="financial_data.db"
-)
+sqlite_config = DatabaseConfig(db_type="sqlite", database="financial_data.db")
 
 # Snowflake configuration
 snowflake_config = DatabaseConfig(
@@ -24,8 +21,8 @@ snowflake_config = DatabaseConfig(
     role="YOUR_ROLE",  # Optional, e.g., "ACCOUNTADMIN"
     extra_params={
         "application": "multi_agent_analysis",
-        "client_session_keep_alive": True
-    }
+        "client_session_keep_alive": True,
+    },
 )
 
 
@@ -42,7 +39,7 @@ def create_snowflake_manager(
     database: str,
     warehouse: str,
     schema: str,
-    role: Optional[str] = None
+    role: Optional[str] = None,
 ) -> DataManager:
     """Create DataManager for Snowflake database."""
     config = DatabaseConfig(
@@ -53,6 +50,6 @@ def create_snowflake_manager(
         database=database,
         warehouse=warehouse,
         schema=schema,
-        role=role
+        role=role,
     )
     return DataManager(config=config)

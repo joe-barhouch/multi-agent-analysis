@@ -4,9 +4,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
+from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
+from langchain_sandbox import PyodideSandboxTool
 
 from src.config import DEFAULT_MODEL_NAME, DEFAULT_TEMPERATURE
 from src.core import BaseAgent, GlobalState
@@ -42,7 +44,12 @@ class SessionContext:
 class AgentRunner:
     """Handles agent execution logic without CLI dependencies."""
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        data_manager: Optional[Any] = None,
+        prep_ttl_s: int = 3600,
+    ):
         """Initialize the agent runner.
 
         Args:
@@ -50,10 +57,41 @@ class AgentRunner:
         """
         self.api_key = api_key
         self.model = self._initialize_model(api_key)
+        self.data_manager = data_manager
+        self.prep_ttl_s = prep_ttl_s
+        self._data_prep_assets: Optional[Dict[str, Any]] = None
+        self._assets_manager_id: Optional[int] = None
 
-    def _initialize_model(
-        self, api_key: Optional[str]
-    ) -> Optional[ChatOpenAI]:
+    def _prepare_data_prep_assets(self, data_manager) -> dict:
+        if self._data_prep_assets:
+            return self._data_prep_assets
+        if data_manager and not getattr(data_manager, "db", None):
+            data_manager.get_sql_database()
+
+        tools = []
+        if self.model and data_manager and getattr(data_manager, "db", None):
+            toolkit = SQLDatabaseToolkit(db=data_manager.db, llm=self.model)
+            tools.extend(toolkit.get_tools())
+
+        try:
+            sandbox_tool = PyodideSandboxTool(allow_net=True, stateful=True)
+            tools.append(sandbox_tool)
+        except Exception:
+            pass
+
+        tool_info = "\n".join(
+            f"<tool>{t.name}: {getattr(t, 'description', '')}</tool>" for t in tools
+        )
+
+        assets = {
+            "data_tools": tools,
+            "tool_info": tool_info,
+            "data_sources": "Sources:\n - Snowflake (primary)\n - Auxiliary CSVs",
+        }
+        self._data_prep_assets = assets
+        return assets
+
+    def _initialize_model(self, api_key: Optional[str]) -> Optional[ChatOpenAI]:
         """Initialize the ChatOpenAI model using centralized config.
 
         Args:
@@ -68,7 +106,7 @@ class AgentRunner:
             return ChatOpenAI(
                 model=DEFAULT_MODEL_NAME,
                 temperature=DEFAULT_TEMPERATURE,
-                api_key=api_key
+                api_key=api_key,
             )
         except Exception:
             return None
@@ -310,7 +348,7 @@ class AgentRunner:
             checkpointer = metadata.get("checkpointer")
 
             if checkpointer and hasattr(checkpointer, "storage"):
-                print(f"DEBUG: Attempting nested tool extraction from checkpointer")
+                print("DEBUG: Attempting nested tool extraction from checkpointer")
 
                 # Iterate through checkpoint storage
                 for key, checkpoint_data in checkpointer.storage.items():
@@ -424,23 +462,24 @@ class AgentRunner:
 
         start_time = time.time()
 
-        # Increment query count
         session.query_count += 1
 
-        # Create fresh global state
         global_state = self._create_global_state(query, session)
         global_state["user_query"] = query
 
-        # Set up configuration
+        assets = self._prepare_data_prep_assets(getattr(self, "data_manager", None))
+
         config = RunnableConfig()
         config["configurable"] = {
             "model": self.model,
             "api_key": self.api_key,
             "query": query,
             "thread_id": "thread-1",
+            "data_tools": assets["data_tools"],
+            "tool_info": assets["tool_info"],
+            "data_sources": assets["data_sources"],
         }
 
-        # Create supervisor using factory
         supervisor = supervisor_factory(
             name=f"supervisor_{session.query_count}",
             global_state=global_state,
@@ -449,7 +488,6 @@ class AgentRunner:
         supervisor = cast(BaseAgent, supervisor)
 
         try:
-            # Execute the agent
             result: AgentResult = await supervisor.execute()
 
             if not result.success:
@@ -460,21 +498,18 @@ class AgentRunner:
                     execution_time=time.time() - start_time,
                 )
 
-            # Extract all information
             ai_response = self._extract_ai_response(result.data)
             agent_flow = self._extract_agent_flow(result.data)
             tool_calls = self._extract_tool_calls(result.data)
             token_usage = self._extract_token_usage(result.data)
 
-            # Extract final global state from supervisor result
             final_global_state = self._extract_final_global_state(
                 result.data, supervisor
             )
 
-            # Enhanced Debug: Print comprehensive message analysis
             if result.data and "message" in result.data:
                 messages = result.data["message"].get("messages", [])
-                print(f"\n=== DEEP DEBUG: Message Analysis ===")
+                print("\n=== DEEP DEBUG: Message Analysis ===")
                 print(f"Found {len(messages)} messages in supervisor workflow:")
 
                 for i, msg in enumerate(messages):
@@ -487,7 +522,6 @@ class AgentRunner:
                         f"  [{i}] {msg_type} | name: {msg_name} | has_tool_calls: {has_tool_calls} | is_tool_msg: {is_tool_msg}"
                     )
 
-                    # Enhanced tool call debugging
                     if has_tool_calls:
                         for j, tc in enumerate(msg.tool_calls):
                             print(
@@ -504,7 +538,6 @@ class AgentRunner:
                         )
                         print(f"       Tool: {tool_name} | content: {content_preview}")
 
-                    # Check for any additional metadata or nested content
                     if hasattr(msg, "additional_kwargs") and msg.additional_kwargs:
                         print(f"       Additional kwargs: {msg.additional_kwargs}")
 
@@ -513,7 +546,6 @@ class AgentRunner:
                 )
                 print("=== END DEEP DEBUG ===\n")
 
-            # Update conversation history
             if ai_response:
                 self._update_conversation_history(session, query, ai_response)
 
