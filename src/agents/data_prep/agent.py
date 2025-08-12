@@ -50,77 +50,43 @@ class DataPrepAgent(BaseAgent):
         self.create_workflow()
 
     def create_workflow(self) -> None:
-        """Create the workflow for the data preparation agent."""
-        # Input validation
         self.validate_input()
 
         model = self.config.get("configurable", {}).get("model")
         if model is None:
-            # Try to create model using API key from config/centralized config
-            api_key = self.config.get("configurable", {}).get("api_key")
-            if api_key:
-                try:
-                    model = ChatOpenAI(
-                        model=DEFAULT_MODEL_NAME,
-                        temperature=DEFAULT_TEMPERATURE,
-                        api_key=api_key
-                    )
-                except Exception as e:
-                    self.log_activity(
-                        f"Could not create OpenAI model: {e}", level="warning"
-                    )
-                    self.workflow = None
-                    return
-            else:
-                self.log_activity(
-                    "Could not create model - check API key configuration",
-                    level="warning",
-                )
-                self.workflow = None
-                return
+            self.log_activity("No model provided in config", level="error")
+            self.workflow = None
+            return
 
-        toolkit = SQLDatabaseToolkit(db=self.data_manager.db, llm=model)
-        sqlite_tools = toolkit.get_tools()
-        self.log_activity("Using SQL tools with automatic query validation")
-        
-        # Try to create sandbox tool, but make it optional for testing
-        sandbox_tool = PyodideSandboxTool(
-            # Allow Pyodide to install python packages that
-            # might be required.
-            allow_net=True,
-            stateful=True,
+        tools = self.config.get("configurable", {}).get("data_tools")
+        tool_info = self.config.get("configurable", {}).get("tool_info")
+        data_sources = (
+            self.config.get("configurable", {}).get("data_sources")
+            or "Sources: (unspecified)"
         )
 
-        # sandbox_tool = self.setup_code_interpreter()
-        # sandbox_tool = self.setup_responses()
+        if not tools:
+            toolkit = SQLDatabaseToolkit(db=self.data_manager.db, llm=model)
+            tools = toolkit.get_tools()
+            try:
+                sandbox_tool = PyodideSandboxTool(allow_net=True, stateful=True)
+                tools.append(sandbox_tool)
+            except Exception:
+                pass
+            tool_info = "\n".join(
+                f"<tool>{t.name}: {getattr(t, 'description', '')}</tool>" for t in tools
+            )
 
-        # Tool descriptions
-        tool_info = "\n".join(
-            f"<tool>{tool.name}: {tool.description}</tool>" 
-            for tool in sqlite_tools
-        )
-        if sandbox_tool:
-            tool_info += f"<tool>{sandbox_tool.name}: {sandbox_tool.description}</tool>"
-
-        print(f"\nTool info: {tool_info}")
-
-        # Create tools list
-        tools = list(sqlite_tools)
-        if sandbox_tool:
-            tools.append(sandbox_tool)
+        checkpointer = self.config.get("configurable", {}).get("checkpointer")
+        if checkpointer is None:
+            checkpointer = InMemorySaver()
 
         self.workflow = create_react_agent(
             model=model,
             tools=tools,
-            prompt=DATA_PREP_PROMPT.format(
-                TOOLS=tool_info,
-                DATA_SOURCES="""Sources: 
-                    - DB: financial_data.db SQLite database
-                    - data/finance_economics_dataset.csv CSV file
-                   """,
-            ),
+            prompt=DATA_PREP_PROMPT.format(TOOLS=tool_info, DATA_SOURCES=data_sources),
             name=self.name,
-            checkpointer=InMemorySaver(),  # Use in-memory saver for simplicity
+            checkpointer=checkpointer,
         )
         self.log_activity("Creating workflow for data preparation tasks.")
 
@@ -267,8 +233,7 @@ if __name__ == "__main__":
         config=RunnableConfig(
             configurable={
                 "model": ChatOpenAI(
-                    model=DEFAULT_MODEL_NAME,
-                    temperature=DEFAULT_TEMPERATURE
+                    model=DEFAULT_MODEL_NAME, temperature=DEFAULT_TEMPERATURE
                 ),
                 "thread_id": "thread-1",
             }

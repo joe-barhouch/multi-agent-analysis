@@ -27,12 +27,8 @@ class TaskStatus(str, Enum):
 class Task(BaseModel):
     """Task model for workflow management."""
 
-    id: int = Field(
-        ..., description="Unique identifier for the task starting at 1"
-    )
-    description: str = Field(
-        ..., description="Description of the task to be performed"
-    )
+    id: int = Field(..., description="Unique identifier for the task starting at 1")
+    description: str = Field(..., description="Description of the task to be performed")
     status: TaskStatus = Field(
         TaskStatus.PENDING, description="Current status of the task"
     )

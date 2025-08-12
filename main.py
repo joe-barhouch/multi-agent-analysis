@@ -27,8 +27,9 @@ async def main(verbose: bool = False) -> None:
 
     # Display startup information
     cli.print_banner()
-    db_info = (f"Snowflake: {data_manager.config['database']}/"
-               f"{data_manager.config['schema']}")
+    db_info = (
+        f"Snowflake: {data_manager.config['database']}/{data_manager.config['schema']}"
+    )
     cli.print_configuration(
         has_api_key=bool(OPENAI_API_KEY),
         has_model=bool(runner.model),

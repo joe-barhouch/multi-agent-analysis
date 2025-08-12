@@ -2,7 +2,7 @@
 Streamlit-specific formatters for displaying execution results in the web interface.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import pandas as pd
 import streamlit as st

@@ -33,7 +33,8 @@ class FinalResponse(BaseModel):
         ..., description="Thought process of the supervisor agent"
     )
     result: str = Field(
-        ..., description="Final result or answer to the user query",
+        ...,
+        description="Final result or answer to the user query",
     )
 
 
@@ -71,9 +72,7 @@ class Supervisor(BaseAgent):
         # Resolve limits from config (if provided), fallback to defaults
         cfg = {}
         try:
-            cfg = (self.config or {}).get(
-                "configurable", {}
-            )  # type: ignore[union-attr]
+            cfg = (self.config or {}).get("configurable", {})  # type: ignore[union-attr]
         except Exception:
             cfg = {}
         self.MAX_HISTORY_MESSAGES = int(
@@ -177,18 +176,14 @@ class Supervisor(BaseAgent):
             return AgentResult(
                 success=False,
                 data=None,
-                error=(
-                    "Workflow not initialized - check API key configuration."
-                ),
+                error=("Workflow not initialized - check API key configuration."),
                 metadata={"agent_name": self.name},
             )
 
         query = self.global_state.get("user_query", None)
 
         if not query:
-            self.log_activity(
-                "No query provided for data preparation.", level="error"
-            )
+            self.log_activity("No query provided for data preparation.", level="error")
             return AgentResult(
                 success=False,
                 data=None,
@@ -197,9 +192,7 @@ class Supervisor(BaseAgent):
             )
 
         # Get conversation history from global state
-        conversation_history = self.global_state.get(
-            "conversation_history", []
-        )
+        conversation_history = self.global_state.get("conversation_history", [])
 
         # Clean up global state conversation history to prevent memory bloat
         self._cleanup_conversation_history()
@@ -207,7 +200,7 @@ class Supervisor(BaseAgent):
         # Prepare messages for workflow - limit history to prevent tokens
         # Keep only the last few messages to stay within token limits
         filtered_history = []
-        for msg in conversation_history[-self.MAX_HISTORY_MESSAGES:]:
+        for msg in conversation_history[-self.MAX_HISTORY_MESSAGES :]:
             content = str(getattr(msg, "content", ""))
             has_content = bool(content)
             content_too_long = len(content) > self.MAX_MESSAGE_LENGTH
@@ -234,9 +227,7 @@ class Supervisor(BaseAgent):
         # Truncate current query if too long
         current_query = query
         if len(query) > self.MAX_MESSAGE_LENGTH:
-            current_query = (
-                query[: self.MAX_MESSAGE_LENGTH] + "... [truncated]"
-            )
+            current_query = query[: self.MAX_MESSAGE_LENGTH] + "... [truncated]"
 
         messages.append(HumanMessage(content=current_query))
 
@@ -278,13 +269,11 @@ class Supervisor(BaseAgent):
 
     def _cleanup_conversation_history(self) -> None:
         """Clean up conversation history to prevent memory bloat."""
-        conversation_history = self.global_state.get(
-            "conversation_history", []
-        )
+        conversation_history = self.global_state.get("conversation_history", [])
 
         if len(conversation_history) > self.MAX_GLOBAL_HISTORY:
             # Keep only the most recent messages
-            trimmed_history = conversation_history[-self.MAX_GLOBAL_HISTORY:]
+            trimmed_history = conversation_history[-self.MAX_GLOBAL_HISTORY :]
             self.global_state["conversation_history"] = trimmed_history
             self.log_activity(
                 (
@@ -309,9 +298,7 @@ class Supervisor(BaseAgent):
                 output_file_path=output_file_path
             )
         except Exception as e:
-            self.log_activity(
-                f"Error drawing workflow graph: {e}", level="error"
-            )
+            self.log_activity(f"Error drawing workflow graph: {e}", level="error")
 
     def debug_workflow(self) -> None:
         """Debug the workflow by printing its structure."""
@@ -341,9 +328,7 @@ class Supervisor(BaseAgent):
                         print(f"Checkpoint {key}: {type(checkpoint_data)}")
                         if hasattr(checkpoint_data, "channel_values"):
                             ch_vals = checkpoint_data.channel_values
-                            print(
-                                f"  Channel values: {ch_vals.keys()}"
-                            )
+                            print(f"  Channel values: {ch_vals.keys()}")
                             # Look for messages in the checkpoint
                             if "messages" in ch_vals:
                                 checkpoint_messages = ch_vals["messages"]

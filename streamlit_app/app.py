@@ -132,7 +132,6 @@ class StreamlitApp:
             help="Enter your OpenAI API key for agent operations",
         )
 
-
         # System Status
         st.sidebar.markdown("### 📊 System Status")
 
@@ -140,7 +139,12 @@ class StreamlitApp:
         if not st.session_state.agent_runner or not st.session_state.data_manager:
             try:
                 st.session_state.data_manager = create_snowflake_manager()
-                st.session_state.agent_runner = AgentRunner(api_key=api_key)
+                if hasattr(st.session_state.data_manager, "get_sql_database"):
+                    st.session_state.data_manager.get_sql_database()
+                st.session_state.agent_runner = AgentRunner(
+                    api_key=api_key,
+                    data_manager=st.session_state.data_manager,
+                )
 
                 if not st.session_state.session_context:
                     st.session_state.session_context = (
@@ -167,14 +171,16 @@ class StreamlitApp:
                 )
             else:
                 st.markdown(
-                    '<div class="failed-badge">API Key ❌</div>',
-                    unsafe_allow_html=True
+                    '<div class="failed-badge">API Key ❌</div>', unsafe_allow_html=True
                 )
 
         with col2:
             # Check Snowflake connection status
             try:
-                if st.session_state.data_manager and st.session_state.data_manager.test_connection():
+                if (
+                    st.session_state.data_manager
+                    and st.session_state.data_manager.test_connection()
+                ):
                     st.markdown(
                         '<div class="success-badge">Snowflake ✅</div>',
                         unsafe_allow_html=True,

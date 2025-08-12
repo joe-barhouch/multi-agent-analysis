@@ -5,8 +5,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import Tool
 from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.prebuilt import create_react_agent
 
 from src.agents.interpreter.models import Plan, QueryInterpretation
 from src.agents.interpreter.prompts import INTERPRETER_PROMPT, PLAN_PROMPT
@@ -58,7 +58,7 @@ class InterpreterAgent(BaseAgent):
                     model = ChatOpenAI(
                         model=DEFAULT_MODEL_NAME,
                         temperature=DEFAULT_TEMPERATURE,
-                        api_key=api_key
+                        api_key=api_key,
                     )
                 except Exception as e:
                     self.log_activity(
@@ -323,8 +323,7 @@ async def main():
         config={
             "configurable": {
                 "model": ChatOpenAI(
-                    model=DEFAULT_MODEL_NAME,
-                    temperature=DEFAULT_TEMPERATURE
+                    model=DEFAULT_MODEL_NAME, temperature=DEFAULT_TEMPERATURE
                 ),
                 "thread_id": "thread-1",
             },
