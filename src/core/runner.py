@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
 from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
+from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
@@ -48,7 +49,6 @@ class AgentRunner:
         self,
         api_key: Optional[str] = None,
         data_manager: Optional[Any] = None,
-        prep_ttl_s: int = 3600,
     ):
         """Initialize the agent runner.
 
@@ -58,7 +58,6 @@ class AgentRunner:
         self.api_key = api_key
         self.model = self._initialize_model(api_key)
         self.data_manager = data_manager
-        self.prep_ttl_s = prep_ttl_s
         self._data_prep_assets: Optional[Dict[str, Any]] = None
         self._assets_manager_id: Optional[int] = None
 

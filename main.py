@@ -21,9 +21,10 @@ async def main(verbose: bool = False) -> None:
     cli = CLIManager(verbose=verbose)
     # Use Snowflake connection instead of SQLite
     data_manager = create_snowflake_manager()
-
+    data_manager.get_sql_database()
+    
     # Get API key and initialize runner
-    runner = AgentRunner(api_key=OPENAI_API_KEY)
+    runner = AgentRunner(api_key=OPENAI_API_KEY, data_manager=data_manager)
 
     # Display startup information
     cli.print_banner()
