@@ -1,17 +1,16 @@
 """Supervisor Agent Class"""
 
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph
 from langgraph_supervisor import create_supervisor
 from pydantic import BaseModel, Field
 
 from src.agents import DataManager, DataPrepAgent, InterpreterAgent
-from src.config import DEBUG
+from src.config import DEBUG, DEFAULT_MODEL_NAME, DEFAULT_TEMPERATURE
 from src.core import AgentResult, AgentType, BaseAgent, GlobalState
 
 from .prompts import SUPERVISOR_PROMPT
@@ -33,11 +32,18 @@ class FinalResponse(BaseModel):
     thought_process: str = Field(
         ..., description="Thought process of the supervisor agent"
     )
-    result: str = Field(..., description="Final result or answer to the user query")
+    result: str = Field(
+        ..., description="Final result or answer to the user query",
+    )
 
 
 class Supervisor(BaseAgent):
     """Supervisor Agent responsible for coordinating all tasks."""
+
+    # Class-level defaults; can be overridden via config
+    MAX_HISTORY_MESSAGES_DEFAULT = 10
+    MAX_MESSAGE_LENGTH_DEFAULT = 5000
+    MAX_GLOBAL_HISTORY_DEFAULT = 20
 
     def __init__(
         self,
@@ -49,7 +55,7 @@ class Supervisor(BaseAgent):
         config: RunnableConfig | None = None,
         logger=None,
     ):
-        """Initialize the Data Prep Agent."""
+        """Initialize the Supervisor Agent."""
         super().__init__(
             agent_type=AgentType.SUPERVISOR,
             name=name,
@@ -61,6 +67,24 @@ class Supervisor(BaseAgent):
         self.local_state = local_state
         self.global_state = global_state
         self.data_manager = data_manager
+
+        # Resolve limits from config (if provided), fallback to defaults
+        cfg = {}
+        try:
+            cfg = (self.config or {}).get(
+                "configurable", {}
+            )  # type: ignore[union-attr]
+        except Exception:
+            cfg = {}
+        self.MAX_HISTORY_MESSAGES = int(
+            cfg.get("max_history_messages", self.MAX_HISTORY_MESSAGES_DEFAULT)
+        )
+        self.MAX_MESSAGE_LENGTH = int(
+            cfg.get("max_message_length", self.MAX_MESSAGE_LENGTH_DEFAULT)
+        )
+        self.MAX_GLOBAL_HISTORY = int(
+            cfg.get("max_global_history", self.MAX_GLOBAL_HISTORY_DEFAULT)
+        )
 
         self.name = name
 
@@ -87,16 +111,24 @@ class Supervisor(BaseAgent):
             logger=self.logger,
         )
 
+        agent_workflows = [
+            interpreter_agent.workflow,
+            data_prep_agent.workflow,
+        ]
+        agents_label = ["interpreter", "data_prep"]
+
         model = self.config.get("configurable", {}).get("model")
         query = self.global_state.get("user_query", None)
 
         if model is None:
-            # Try to create model using API key from config
+            # Try to create model using API key from config/centralized config
             api_key = self.config.get("configurable", {}).get("api_key")
             if api_key:
                 try:
                     model = ChatOpenAI(
-                        model="gpt-4.1-mini", temperature=0, api_key=api_key
+                        model=DEFAULT_MODEL_NAME,
+                        temperature=DEFAULT_TEMPERATURE,
+                        api_key=api_key,
                     )
                 except Exception as e:
                     self.log_activity(
@@ -106,23 +138,17 @@ class Supervisor(BaseAgent):
                     return
             else:
                 self.log_activity(
-                    "No API key provided - workflow will not be created",
+                    "Could not create model - check API key configuration",
                     level="warning",
                 )
                 self.workflow = None
                 return
 
         supervisor = create_supervisor(
-            agents=[
-                interpreter_agent.workflow,
-                data_prep_agent.workflow,
-            ],
+            agents=agent_workflows,
             model=model,
             prompt=SUPERVISOR_PROMPT.format(
-                AGENTS="\n".join(
-                    f"<agent>{agent.name}"
-                    for agent in [interpreter_agent, data_prep_agent]
-                ),
+                AGENTS=f"Available agents: {', '.join(agents_label)}",
                 QUERY=query,
             ),
             supervisor_name="Supervisor",
@@ -133,33 +159,36 @@ class Supervisor(BaseAgent):
             output_mode="full_history",
         )
 
-        # TODO: check why checkpointer is not working
-        # Create persistent checkpointer
-        sql_checkpointer = SqliteSaver.from_conn_string("chat_history.db")
-
+        # Compile with in-memory saver; switch to persistent saver
+        # in deployment
         self.workflow = supervisor.compile(
-            checkpointer=InMemorySaver(),  # Use in-memory saver for simplicity
+            checkpointer=InMemorySaver(),
         )
 
     async def execute(self) -> AgentResult:
-        """Execute data preparation tasks."""
-        self.log_activity("Executing data preparation tasks.")
+        """Execute supervisor flow for the current user query."""
+        self.log_activity("Executing supervisor workflow.")
 
         if self.workflow is None:
             self.log_activity(
-                "Workflow not initialized - likely missing API key", level="error"
+                "Workflow not initialized - likely missing API key",
+                level="error",
             )
             return AgentResult(
                 success=False,
                 data=None,
-                error="Workflow not initialized - check API key configuration.",
+                error=(
+                    "Workflow not initialized - check API key configuration."
+                ),
                 metadata={"agent_name": self.name},
             )
 
         query = self.global_state.get("user_query", None)
 
         if not query:
-            self.log_activity("No query provided for data preparation.", level="error")
+            self.log_activity(
+                "No query provided for data preparation.", level="error"
+            )
             return AgentResult(
                 success=False,
                 data=None,
@@ -168,11 +197,48 @@ class Supervisor(BaseAgent):
             )
 
         # Get conversation history from global state
-        conversation_history = self.global_state.get("conversation_history", [])
+        conversation_history = self.global_state.get(
+            "conversation_history", []
+        )
 
-        # Prepare messages for workflow (include history + current query)
-        messages = conversation_history.copy()
-        messages.append(HumanMessage(content=query))
+        # Clean up global state conversation history to prevent memory bloat
+        self._cleanup_conversation_history()
+
+        # Prepare messages for workflow - limit history to prevent tokens
+        # Keep only the last few messages to stay within token limits
+        filtered_history = []
+        for msg in conversation_history[-self.MAX_HISTORY_MESSAGES:]:
+            content = str(getattr(msg, "content", ""))
+            has_content = bool(content)
+            content_too_long = len(content) > self.MAX_MESSAGE_LENGTH
+            if has_content and content_too_long:
+                # Truncate long messages
+                truncated_content = (
+                    content[: self.MAX_MESSAGE_LENGTH] + "... [truncated]"
+                )
+                # Create new message with truncated content
+                if hasattr(msg, "type"):
+                    if msg.type == "human":
+                        truncated_msg = HumanMessage(content=truncated_content)
+                    else:
+                        truncated_msg = AIMessage(content=truncated_content)
+                    filtered_history.append(truncated_msg)
+                else:
+                    filtered_history.append(msg)
+            else:
+                filtered_history.append(msg)
+
+        # Prepare messages for workflow
+        messages = filtered_history.copy()
+
+        # Truncate current query if too long
+        current_query = query
+        if len(query) > self.MAX_MESSAGE_LENGTH:
+            current_query = (
+                query[: self.MAX_MESSAGE_LENGTH] + "... [truncated]"
+            )
+
+        messages.append(HumanMessage(content=current_query))
 
         if not self.streaming:
             response = await self.workflow.ainvoke(
@@ -184,7 +250,7 @@ class Supervisor(BaseAgent):
             async for chunk in self.workflow.astream(
                 {"messages": messages}, stream_mode="values"
             ):
-                print(chunk)  # Print each chunk for debugging
+                print(chunk)
 
             print("Streaming not fully implemented yet.")
             response = None
@@ -193,7 +259,6 @@ class Supervisor(BaseAgent):
         if DEBUG:
             self.debug_workflow()
 
-        # Placeholder for actual implementation
         return AgentResult(
             success=True,
             data={"message": response},
@@ -211,6 +276,24 @@ class Supervisor(BaseAgent):
         # Model can be None for testing without API key
         self.log_activity("Input validation completed successfully.")
 
+    def _cleanup_conversation_history(self) -> None:
+        """Clean up conversation history to prevent memory bloat."""
+        conversation_history = self.global_state.get(
+            "conversation_history", []
+        )
+
+        if len(conversation_history) > self.MAX_GLOBAL_HISTORY:
+            # Keep only the most recent messages
+            trimmed_history = conversation_history[-self.MAX_GLOBAL_HISTORY:]
+            self.global_state["conversation_history"] = trimmed_history
+            self.log_activity(
+                (
+                    "Trimmed conversation history from "
+                    f"{len(conversation_history)} to "
+                    f"{len(trimmed_history)} messages"
+                )
+            )
+
     def draw_graph(self, output_file_path: str | None = None) -> None:
         """Draw the workflow graph."""
         if self.workflow is None:
@@ -226,7 +309,9 @@ class Supervisor(BaseAgent):
                 output_file_path=output_file_path
             )
         except Exception as e:
-            self.log_activity(f"Error drawing workflow graph: {e}", level="error")
+            self.log_activity(
+                f"Error drawing workflow graph: {e}", level="error"
+            )
 
     def debug_workflow(self) -> None:
         """Debug the workflow by printing its structure."""
@@ -235,8 +320,8 @@ class Supervisor(BaseAgent):
         print(f"Workflow type: {type(self.workflow)}")
 
         # Try to access checkpointer state
-        if hasattr(self.workflow, "checkpointer") and self.workflow.checkpointer:
-            checkpointer = self.workflow.checkpointer
+        checkpointer = getattr(self.workflow, "checkpointer", None)
+        if checkpointer is not None:
             print(f"Checkpointer type: {type(checkpointer)}")
             print(f"Checkpointer available: {checkpointer is not None}")
 
@@ -244,27 +329,30 @@ class Supervisor(BaseAgent):
             try:
                 # For InMemorySaver, we might need to access internal storage
                 if hasattr(checkpointer, "storage"):
-                    print(
-                        f"Checkpointer storage keys: {list(checkpointer.storage.keys()) if checkpointer.storage else 'None'}"
+                    keys = (
+                        list(checkpointer.storage.keys())
+                        if checkpointer.storage
+                        else None
                     )
+                    print(f"Checkpointer storage keys: {keys}")
 
                     # Print checkpoint data for debugging
                     for key, checkpoint_data in checkpointer.storage.items():
                         print(f"Checkpoint {key}: {type(checkpoint_data)}")
                         if hasattr(checkpoint_data, "channel_values"):
+                            ch_vals = checkpoint_data.channel_values
                             print(
-                                f"  Channel values: {checkpoint_data.channel_values.keys()}"
+                                f"  Channel values: {ch_vals.keys()}"
                             )
                             # Look for messages in the checkpoint
-                            if "messages" in checkpoint_data.channel_values:
-                                checkpoint_messages = checkpoint_data.channel_values[
-                                    "messages"
-                                ]
+                            if "messages" in ch_vals:
+                                checkpoint_messages = ch_vals["messages"]
                                 print(
-                                    f"  Checkpoint has {len(checkpoint_messages)} messages"
+                                    "  Checkpoint has "
+                                    f"{len(checkpoint_messages)} messages"
                                 )
 
-            except Exception as e:
+            except Exception as e:  # pragma: no cover - debug only
                 print(f"Error accessing checkpointer: {e}")
         else:
             print("No checkpointer available")

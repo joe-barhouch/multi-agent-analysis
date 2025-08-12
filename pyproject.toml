@@ -35,6 +35,12 @@ dependencies = [
     "e2b>=1.8.0",
     "snowflake-connector-python>=3.12.0",
     "snowflake-sqlalchemy>=1.7.0",
+    "sqlglot>=25.0.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.2.0",
 ]
 
 [tool.setuptools]

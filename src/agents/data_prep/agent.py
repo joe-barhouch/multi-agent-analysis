@@ -1,4 +1,4 @@
-"""Data Prep Agent."""
+"""Data Preparation Agent Module."""
 
 from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_core.messages import HumanMessage
@@ -11,6 +11,7 @@ from langgraph.prebuilt import create_react_agent
 from openai import OpenAI
 
 from src.agents.database_manager import SnowflakeManager as DataManager
+from src.config import DEFAULT_MODEL_NAME, DEFAULT_TEMPERATURE
 from src.core.base_agent import BaseAgent
 from src.core.models import AgentResult
 from src.core.state import GlobalState
@@ -55,12 +56,14 @@ class DataPrepAgent(BaseAgent):
 
         model = self.config.get("configurable", {}).get("model")
         if model is None:
-            # Try to create model using API key from config
+            # Try to create model using API key from config/centralized config
             api_key = self.config.get("configurable", {}).get("api_key")
             if api_key:
                 try:
                     model = ChatOpenAI(
-                        model="gpt-4.1-mini", temperature=0, api_key=api_key
+                        model=DEFAULT_MODEL_NAME,
+                        temperature=DEFAULT_TEMPERATURE,
+                        api_key=api_key
                     )
                 except Exception as e:
                     self.log_activity(
@@ -70,7 +73,7 @@ class DataPrepAgent(BaseAgent):
                     return
             else:
                 self.log_activity(
-                    "No API key provided - workflow will not be created",
+                    "Could not create model - check API key configuration",
                     level="warning",
                 )
                 self.workflow = None
@@ -78,6 +81,7 @@ class DataPrepAgent(BaseAgent):
 
         toolkit = SQLDatabaseToolkit(db=self.data_manager.db, llm=model)
         sqlite_tools = toolkit.get_tools()
+        self.log_activity("Using SQL tools with automatic query validation")
         
         # Try to create sandbox tool, but make it optional for testing
         sandbox_tool = PyodideSandboxTool(
@@ -263,8 +267,8 @@ if __name__ == "__main__":
         config=RunnableConfig(
             configurable={
                 "model": ChatOpenAI(
-                    model="gpt-4.1-mini",
-                    temperature=0,
+                    model=DEFAULT_MODEL_NAME,
+                    temperature=DEFAULT_TEMPERATURE
                 ),
                 "thread_id": "thread-1",
             }

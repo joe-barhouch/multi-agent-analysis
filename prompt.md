@@ -8,7 +8,7 @@ Started: 2025-07-30 16:53:49
 📋 CONFIGURATION:
 ------------------------------
 API Key: ✅ Set
-Model: gpt-4.1-mini
+Model: gpt-5-mini
 Database: financial_data.db
 Status: 🟢 Ready
 Verbose Mode: ✅ Enabled
