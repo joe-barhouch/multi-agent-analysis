@@ -10,6 +10,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from src.agents.interpreter.models import Plan, QueryInterpretation
 from src.agents.interpreter.prompts import INTERPRETER_PROMPT, PLAN_PROMPT
+from src.config import DEFAULT_MODEL_NAME, DEFAULT_TEMPERATURE
 from src.core.base_agent import BaseAgent
 from src.core.models import AgentResult
 from src.core.state import GlobalState
@@ -50,12 +51,14 @@ class InterpreterAgent(BaseAgent):
 
         model = self.config.get("configurable", {}).get("model")
         if model is None:
-            # Try to create model using API key from config
+            # Try to create model using API key from config/centralized config
             api_key = self.config.get("configurable", {}).get("api_key")
             if api_key:
                 try:
                     model = ChatOpenAI(
-                        model="gpt-4.1-mini", temperature=0.0, api_key=api_key
+                        model=DEFAULT_MODEL_NAME,
+                        temperature=DEFAULT_TEMPERATURE,
+                        api_key=api_key
                     )
                 except Exception as e:
                     self.log_activity(
@@ -65,7 +68,7 @@ class InterpreterAgent(BaseAgent):
                     return
             else:
                 self.log_activity(
-                    "No API key provided - workflow will not be created",
+                    "Could not create model - check API key configuration",
                     level="warning",
                 )
                 self.workflow = None
@@ -319,7 +322,10 @@ async def main():
         local_state=None,
         config={
             "configurable": {
-                "model": ChatOpenAI(model="gpt-4.1-mini", temperature=0.0),
+                "model": ChatOpenAI(
+                    model=DEFAULT_MODEL_NAME,
+                    temperature=DEFAULT_TEMPERATURE
+                ),
                 "thread_id": "thread-1",
             },
             "recursion_limit": 5,

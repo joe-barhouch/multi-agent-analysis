@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 
+from src.config import DEFAULT_MODEL_NAME, DEFAULT_TEMPERATURE
 from src.core import BaseAgent, GlobalState
 from src.core.models import AgentResult
 
@@ -50,13 +51,25 @@ class AgentRunner:
         self.api_key = api_key
         self.model = self._initialize_model(api_key)
 
-    def _initialize_model(self, api_key: Optional[str]) -> Optional[ChatOpenAI]:
-        """Initialize the language model."""
+    def _initialize_model(
+        self, api_key: Optional[str]
+    ) -> Optional[ChatOpenAI]:
+        """Initialize the ChatOpenAI model using centralized config.
+
+        Args:
+            api_key: OpenAI API key
+
+        Returns:
+            ChatOpenAI instance or None if initialization fails
+        """
         if not api_key:
             return None
-
         try:
-            return ChatOpenAI(model="gpt-4.1-mini", temperature=0, api_key=api_key)
+            return ChatOpenAI(
+                model=DEFAULT_MODEL_NAME,
+                temperature=DEFAULT_TEMPERATURE,
+                api_key=api_key
+            )
         except Exception:
             return None
 

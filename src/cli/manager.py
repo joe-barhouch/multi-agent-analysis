@@ -39,7 +39,7 @@ class CLIManager:
         print("\n📋 CONFIGURATION:")
         print("-" * 30)
         print(f"API Key: {'✅ Set' if has_api_key else '❌ Not Set'}")
-        print(f"Model: {'gpt-4.1-mini' if has_model else '❌ Unavailable'}")
+        print(f"Model: {'gpt-5-mini' if has_model else '❌ Unavailable'}")
         print(f"Database: {db_path}")
         print(f"Status: {'🟢 Ready' if has_api_key else '🟡 Limited Mode'}")
         if self.verbose:

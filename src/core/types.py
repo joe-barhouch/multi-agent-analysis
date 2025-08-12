@@ -13,7 +13,6 @@ class AgentType(str, Enum):
     DATA_PREP = "data_prep"
     DATA_AGENT = "data_agent"
     VISUALIZATION = "visualization"
-    DATA_ANALYST = "data_analyst"
 
 
 class TaskStatus(str, Enum):
@@ -28,8 +27,12 @@ class TaskStatus(str, Enum):
 class Task(BaseModel):
     """Task model for workflow management."""
 
-    id: int = Field(..., description="Unique identifier for the task starting at 1")
-    description: str = Field(..., description="Description of the task to be performed")
+    id: int = Field(
+        ..., description="Unique identifier for the task starting at 1"
+    )
+    description: str = Field(
+        ..., description="Description of the task to be performed"
+    )
     status: TaskStatus = Field(
         TaskStatus.PENDING, description="Current status of the task"
     )

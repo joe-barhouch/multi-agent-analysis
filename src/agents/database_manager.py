@@ -6,8 +6,132 @@ from urllib.parse import parse_qs, urlparse
 import pandas as pd
 from langchain_community.utilities.sql_database import SQLDatabase
 from sqlalchemy import create_engine, text
+from sqlglot import parse, exp as sql_exp
 
 from src.config import SNOWFLAKE_CONN_STRING, SNOWFLAKE_RSA_PRIVATE_KEY
+
+
+class SQLSecurityError(Exception):
+    """Exception raised for dangerous SQL operations."""
+    pass
+
+
+def validate_sql_query(query: str) -> str:
+    """Validate SQL query for security threats using sqlglot.
+
+    - Enforces a single statement (no multi-statement queries).
+    - Allows only SELECT queries (WITH/CTE and UNION/UNION ALL).
+    - Detects dangerous operations via AST nodes (not regex).
+
+    Args:
+        query: SQL query string to validate
+
+    Returns:
+        Cleaned query string
+
+    Raises:
+        SQLSecurityError: If query contains dangerous operations
+            or invalid structure
+    """
+    sql = query.strip()
+    if not sql:
+        raise SQLSecurityError("Empty SQL query is not allowed.")
+
+    # Parse the SQL into an AST using the Snowflake dialect.
+    # Use parse() (not parse_one) to detect multiple statements.
+    try:
+        statements = parse(sql, read="snowflake")
+    except Exception as e:
+        raise SQLSecurityError(f"Invalid SQL syntax: {e}") from e
+
+    # Disallow multiple statements separated by semicolons
+    if len(statements) != 1:
+        raise SQLSecurityError("Only a single SQL statement is allowed.")
+
+    stmt = statements[0]
+
+    # Build a list of disallowed expression types safely via getattr
+    disallowed_names = [
+        "Delete",
+        "Drop",
+        "Truncate",
+        "Alter",
+        "Create",
+        "Insert",
+        "Update",
+        "Replace",
+        "Merge",
+        "Grant",
+        "Revoke",
+        "Call",
+        "Execute",
+        "Use",
+        "Set",
+        "Declare",
+        # Also block generic command statements if present
+        # in the dialect
+        "Command",
+    ]
+    disallowed_types = tuple(
+        t
+        for t in (getattr(sql_exp, name, None) for name in disallowed_names)
+        if t is not None
+    )
+
+    # If the top-level statement itself is a disallowed operation,
+    # raise a precise error before generic gating.
+    for t in disallowed_types:
+        if isinstance(stmt, t):
+            op_name = getattr(t, "__name__", str(t)).upper()
+            raise SQLSecurityError(
+                (
+                    f"Dangerous SQL operation '{op_name}' detected. "
+                    "Only SELECT queries are permitted."
+                )
+            )
+
+    # Allow only SELECT/CTE/UNION as the top-level statement
+    allowed_roots = (sql_exp.Select, sql_exp.With, sql_exp.Union)
+    if not isinstance(stmt, allowed_roots):
+        raise SQLSecurityError(
+            "Only SELECT queries (including WITH/UNION) are allowed."
+        )
+
+    # If WITH (CTE), unwrap to the underlying statement
+    # (should be SELECT or UNION)
+    root = stmt
+    if isinstance(stmt, sql_exp.With):
+        root = stmt.this
+        if not isinstance(root, (sql_exp.Select, sql_exp.Union)):
+            raise SQLSecurityError("WITH must wrap a SELECT or UNION query.")
+
+    # Search the AST for any disallowed operations. This avoids
+    # false positives from strings/comments.
+    for t in disallowed_types:
+        if root.find(t):
+            # Report the keyword name in upper case for clarity
+            op_name = getattr(t, "__name__", str(t)).upper()
+            raise SQLSecurityError(
+                (
+                    "Dangerous SQL operation '"
+                    f"{op_name}"
+                    "' detected. Only SELECT queries are permitted."
+                )
+            )
+
+    # If the root is a UNION, ensure each side is a SELECT
+    # (sqlglot guarantees this for typical parses)
+    if isinstance(root, sql_exp.Union):
+        left_ok = isinstance(
+            root.left, (sql_exp.Select, sql_exp.With, sql_exp.Subquery)
+        )
+        right_ok = isinstance(
+            root.right, (sql_exp.Select, sql_exp.With, sql_exp.Subquery)
+        )
+        if not (left_ok and right_ok):
+            raise SQLSecurityError("UNION must combine SELECT queries only.")
+
+    return sql
 
 
 class SnowflakeManager:
@@ -90,13 +214,39 @@ class SnowflakeManager:
         return self.sql_database.get_table_info_no_throw([table_name])
     
     def query(self, sql: str) -> pd.DataFrame:
-        """Execute SQL query and return results as DataFrame."""
+        """Execute SQL query and return results as DataFrame.
+        
+        Args:
+            sql: SQL query to execute
+            
+        Returns:
+            DataFrame with query results
+            
+        Raises:
+            SQLSecurityError: If query contains dangerous operations
+        """
+        # Validate query for security
+        validated_sql = validate_sql_query(sql)
+        
         with self.engine.connect() as conn:
-            return pd.read_sql(sql, conn)
+            return pd.read_sql(validated_sql, conn)
     
     def run_sql(self, query: str) -> str:
-        """Run SQL query and return results as string (for LangChain)."""
-        return self.sql_database.run(query)
+        """Run SQL query and return results as string (for LangChain).
+        
+        Args:
+            query: SQL query to execute
+            
+        Returns:
+            Query results as string
+            
+        Raises:
+            SQLSecurityError: If query contains dangerous operations
+        """
+        # Validate query for security
+        validated_query = validate_sql_query(query)
+        
+        return self.sql_database.run(validated_query)
 
 
 def create_snowflake_manager() -> SnowflakeManager:
