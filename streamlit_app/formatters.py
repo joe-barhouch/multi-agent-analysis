@@ -21,8 +21,8 @@ class StreamlitFormatter:
         agent_name = agent_name.replace("_", " ").title()
         if "Supervisor" in agent_name:
             return "🎯 Supervisor"
-        elif "data_prep" in agent_name.lower():
-            return "📊 Data Prep"
+        elif "data_extractor" in agent_name.lower():
+            return "📊 Data Extractor"
         elif "interpreter" in agent_name.lower():
             return "🧠 Interpreter"
         return f"🤖 {agent_name}"

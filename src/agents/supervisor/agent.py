@@ -9,7 +9,9 @@ from langgraph.graph import StateGraph
 from langgraph_supervisor import create_supervisor
 from pydantic import BaseModel, Field
 
-from src.agents import DataManager, DataPrepAgent, InterpreterAgent
+from src.agents.database_manager import SnowflakeManager as DataManager
+from src.agents.interpreter.agent import InterpreterAgent
+from src.agents.data_extractor.agent import DataExtractorAgent
 from src.config import DEBUG, DEFAULT_MODEL_NAME, DEFAULT_TEMPERATURE
 from src.core import AgentResult, AgentType, BaseAgent, GlobalState
 
@@ -100,21 +102,21 @@ class Supervisor(BaseAgent):
             local_state=self.local_state,
             config=self.config,
             logger=self.logger,
-        )
-        data_prep_agent = DataPrepAgent(
-            name="data_prep",
+        )     
+        data_extractor_agent = DataExtractorAgent(
+            name="data_extractor",
             global_state=self.global_state,
-            local_state=self.local_state,
             data_manager=self.data_manager,
+            local_state=self.local_state,
             config=self.config,
             logger=self.logger,
         )
 
         agent_workflows = [
             interpreter_agent.workflow,
-            data_prep_agent.workflow,
+            data_extractor_agent.workflow,
         ]
-        agents_label = ["interpreter", "data_prep"]
+        agents_label = ["interpreter", "data_extractor"]
 
         model = self.config.get("configurable", {}).get("model")
         query = self.global_state.get("user_query", None)
