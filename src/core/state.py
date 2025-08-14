@@ -6,7 +6,7 @@ from langchain_core.messages import BaseMessage
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from src.agents.interpreter.models import Plan, QueryInterpretation
+from .models import Plan, QueryInterpretation
 
 
 class WidgetDataRequirements(BaseModel):

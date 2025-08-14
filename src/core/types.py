@@ -10,7 +10,8 @@ class AgentType(str, Enum):
 
     SUPERVISOR = "supervisor"
     QUERY_INTERPRETER = "query_interpreter"
-    DATA_PREP = "data_prep"
+    #DATA_PREP = "data_prep"
+    DATA_EXTRACTOR = "data_extractor"
     DATA_AGENT = "data_agent"
     VISUALIZATION = "visualization"
 

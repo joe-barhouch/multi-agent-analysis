@@ -50,7 +50,7 @@ class CLIManager:
         """Print the ready message."""
         print("\n🚀 System ready! Type your queries below.")
         print("💡 Type 'exit', 'quit', or press Ctrl+C to stop.")
-        print("🧠 Chat history: Enabled (max 20 messages, SQLite persistence)")
+        print("🧠 Chat history: Enabled (max 20 messages)")
         print("=" * 60)
 
     def get_user_input(self, query_count: int) -> Optional[str]:

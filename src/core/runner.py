@@ -58,12 +58,12 @@ class AgentRunner:
         self.api_key = api_key
         self.model = self._initialize_model(api_key)
         self.data_manager = data_manager
-        self._data_prep_assets: Optional[Dict[str, Any]] = None
+        self._database_assets: Optional[Dict[str, Any]] = None
         self._assets_manager_id: Optional[int] = None
 
-    def _prepare_data_prep_assets(self, data_manager) -> dict:
-        if self._data_prep_assets:
-            return self._data_prep_assets
+    def _prepare_database_assets(self, data_manager) -> dict:
+        if self._database_assets:
+            return self._database_assets
         if data_manager and not getattr(data_manager, "db", None):
             data_manager.get_sql_database()
 
@@ -87,7 +87,7 @@ class AgentRunner:
             "tool_info": tool_info,
             "data_sources": "Sources:\n - Snowflake (primary)\n - Auxiliary CSVs",
         }
-        self._data_prep_assets = assets
+        self._database_assets = assets
         return assets
 
     def _initialize_model(self, api_key: Optional[str]) -> Optional[ChatOpenAI]:
@@ -466,7 +466,7 @@ class AgentRunner:
         global_state = self._create_global_state(query, session)
         global_state["user_query"] = query
 
-        assets = self._prepare_data_prep_assets(getattr(self, "data_manager", None))
+        assets = self._prepare_database_assets(getattr(self, "data_manager", None))
 
         config = RunnableConfig()
         config["configurable"] = {
