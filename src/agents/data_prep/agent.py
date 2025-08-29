@@ -1,8 +1,10 @@
-"""Data Preparation Agent Module."""
+"""Data Preparation Agent Module with DataFrame Storage."""
 
+import pandas as pd
 from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain_sandbox import PyodideSandboxTool
 from langgraph.checkpoint.memory import InMemorySaver
@@ -42,12 +44,18 @@ class DataPrepAgent(BaseAgent):
         )
         self.local_state = local_state
         self.global_state = global_state
-
         self.data_manager = data_manager
-
         self.name = name
-
         self.create_workflow()
+
+    def gs_get(self, key: str, default=None):
+        """Safely get a value from global state."""
+        return self.global_state.get(key, default)
+
+    def gs_set(self, key: str, value):
+        """Safely set a value in global state."""
+        self.global_state[key] = value
+        self.log_activity(f"Stored {key} in global state")
 
     def create_workflow(self) -> None:
         self.validate_input()
@@ -77,14 +85,74 @@ class DataPrepAgent(BaseAgent):
                 f"<tool>{t.name}: {getattr(t, 'description', '')}</tool>" for t in tools
             )
 
+        @tool("execute_sql_and_store_dataframe")
+        async def execute_sql_and_store_dataframe(sql_query: str) -> str:
+            """Execute SQL query and store the resulting DataFrame in global state.
+
+            Args:
+                sql_query: The SQL query to execute
+
+            Returns:
+                String description of the execution result and DataFrame info
+            """
+            try:
+                self.log_activity(f"Executing SQL query: {sql_query}")
+
+                if hasattr(self.data_manager.db, "_engine"):
+                    df = pd.read_sql(sql_query, self.data_manager.db._engine)
+                else:
+                    result = self.data_manager.db.run(sql_query)
+                    if isinstance(result, str):
+                        lines = result.strip().split("\n")
+                        if len(lines) > 1:
+                            headers = (
+                                lines[0].split("\t")
+                                if "\t" in lines[0]
+                                else lines[0].split()
+                            )
+                            data_rows = []
+                            for line in lines[1:]:
+                                row = line.split("\t") if "\t" in line else line.split()
+                                data_rows.append(row)
+                            df = pd.DataFrame(data_rows, columns=headers)
+                        else:
+                            return f"Query executed but returned: {result}"
+                    else:
+                        df = pd.DataFrame(result)
+
+                self.gs_set("dataframe", df)
+                self.gs_set("sql_query_executed", sql_query)
+
+                info = "Successfully executed SQL query and stored DataFrame:\n"
+                info += f"- Shape: {df.shape}\n"
+                info += f"- Columns: {list(df.columns)}\n"
+                info += f"- First few rows:\n{df.head().to_string()}"
+
+                self.log_activity(f"DataFrame stored with shape {df.shape}")
+
+                return info
+
+            except Exception as e:
+                error_msg = f"Error executing SQL query: {str(e)}"
+                self.log_activity(error_msg, level="error")
+                return error_msg
+
+        tools.append(execute_sql_and_store_dataframe)
+
+        tool_info += "\n<tool>execute_sql_and_store_dataframe: Execute SQL query and store the resulting DataFrame in global state for further analysis</tool>"
+
         checkpointer = self.config.get("configurable", {}).get("checkpointer")
         if checkpointer is None:
             checkpointer = InMemorySaver()
 
+        updated_prompt = DATA_PREP_PROMPT.format(
+            TOOLS=tool_info, DATA_SOURCES=data_sources
+        )
+
         self.workflow = create_react_agent(
             model=model,
             tools=tools,
-            prompt=DATA_PREP_PROMPT.format(TOOLS=tool_info, DATA_SOURCES=data_sources),
+            prompt=updated_prompt,
             name=self.name,
             checkpointer=checkpointer,
         )
@@ -96,14 +164,6 @@ class DataPrepAgent(BaseAgent):
         """Setup Code Interpreter tool with persistent context."""
         model = self.config.get("configurable", {}).get("model")
         client = OpenAI()
-
-        # file = client.files.create(
-        #     file=open(
-        #         "/Users/joe/joe/personal/multi-agent-analysis/data/finance_economics_dataset.csv",
-        #         "rb",
-        #     ),
-        #     purpose="assistants",
-        # )
 
         container = client.containers.create(name="code_interpreter_container")
 
@@ -129,7 +189,6 @@ class DataPrepAgent(BaseAgent):
 
     async def run_code_interpreter(self) -> None:
         code_model = self.setup_responses()
-        # Maintain conversation context
         messages = []
 
         questions = [
@@ -138,7 +197,6 @@ class DataPrepAgent(BaseAgent):
         ]
 
         for q in questions:
-            # Add user message
             messages.append(
                 HumanMessage(
                     content=q,
@@ -152,10 +210,8 @@ class DataPrepAgent(BaseAgent):
                 )
             )
 
-            # Get response with full context
             response = await code_model.ainvoke(messages, config=self.config)
 
-            # Add assistant response to maintain context
             messages.append({"role": "assistant", "content": response.content})
 
             self.log_activity(f"Code Interpreter response: {response.content}")
@@ -187,8 +243,6 @@ class DataPrepAgent(BaseAgent):
                 metadata={"agent_name": self.name},
             )
 
-        # Call the workflow with proper message format
-
         response = await self.workflow.ainvoke(
             {"messages": [HumanMessage(content=query)]},
             config=self.config,
@@ -205,12 +259,10 @@ class DataPrepAgent(BaseAgent):
         """Validate the input configuration for the agent."""
         if not self.config:
             raise ValueError("Configuration is required for DataPrepAgent.")
-        # Model can be None for testing without API key
         self.log_activity("Input validation completed successfully.")
 
 
 if __name__ == "__main__":
-    # Example usage
     from dotenv import load_dotenv
     from langchain_openai import ChatOpenAI
 
@@ -223,7 +275,6 @@ if __name__ == "__main__":
     )
 
     data_manager = DataManager("financial_data.db")
-
     data_manager.get_sql_database()
 
     agent = DataPrepAgent(
@@ -240,14 +291,8 @@ if __name__ == "__main__":
         ),
     )
 
-    # Create workflow
     agent.create_workflow()
 
-    # Execute the agent
     import asyncio
-
-    # code_model = agent.setup_responses()
-
-    asyncio.run(agent.run_code_interpreter())
 
     asyncio.run(agent.execute())

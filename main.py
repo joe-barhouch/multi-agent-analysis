@@ -17,16 +17,12 @@ async def main(verbose: bool = False) -> None:
     Args:
         verbose: Enable verbose output mode
     """
-    # Initialize components
     cli = CLIManager(verbose=verbose)
-    # Use Snowflake connection instead of SQLite
     data_manager = create_snowflake_manager()
     data_manager.get_sql_database()
-    
-    # Get API key and initialize runner
+
     runner = AgentRunner(api_key=OPENAI_API_KEY, data_manager=data_manager)
 
-    # Display startup information
     cli.print_banner()
     db_info = (
         f"Snowflake: {data_manager.config['database']}/{data_manager.config['schema']}"
@@ -38,10 +34,8 @@ async def main(verbose: bool = False) -> None:
     )
     cli.print_ready_message()
 
-    # Create session
     session = runner.create_session()
 
-    # Create supervisor factory
     def create_supervisor(name, global_state, config):
         supervisor = Supervisor(
             name=name,
@@ -53,29 +47,22 @@ async def main(verbose: bool = False) -> None:
 
         return supervisor
 
-    # Main interaction loop
     while True:
         try:
-            # Get user input
             user_query = cli.get_user_input(session.query_count)
 
-            # Check for exit
             if user_query is None:
                 cli.print_goodbye()
                 break
 
-            # Skip empty queries
             if not user_query:
                 continue
 
-            # Process the query
             cli.print_processing(user_query, session)
             result = await runner.execute_query(user_query, session, create_supervisor)
 
-            # Display results
             cli.print_results(result)
 
-            # Show tips if needed
             if not result.success and not OPENAI_API_KEY:
                 cli.print_tip(
                     "Set OPENAI_API_KEY environment variable for full functionality."
@@ -93,7 +80,6 @@ async def main(verbose: bool = False) -> None:
             cli.print_error(f"Unexpected error: {e}", show_traceback=True)
             print("🔄 Continuing... (type 'exit' to quit)")
 
-    # Print session summary
     cli.print_session_summary(session)
 
 

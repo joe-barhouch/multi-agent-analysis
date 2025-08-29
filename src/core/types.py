@@ -13,6 +13,7 @@ class AgentType(str, Enum):
     DATA_PREP = "data_prep"
     DATA_AGENT = "data_agent"
     VISUALIZATION = "visualization"
+    DATA_INTERPRETATION = "data_interpretation"
 
 
 class TaskStatus(str, Enum):

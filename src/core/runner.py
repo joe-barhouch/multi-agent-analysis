@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
 from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
-from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI

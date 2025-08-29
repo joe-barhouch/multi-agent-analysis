@@ -12,10 +12,7 @@ Data Sources:
 {DATA_SOURCES}
 </data_sources>
 
-
-
 Follow these steps to prepare the data:
-
 
 1. Review the available tools, data sources, and analysis requirements carefully.
 
@@ -54,6 +51,8 @@ Follow these steps to prepare the data:
 Guidelines for data cleaning and structuring:
 - Ensure consistent date formats across all time series data.
 - Implement a consistent naming convention for all database objects (tables, columns, views) with column_name format.
+- For stock price queries, always include a minimum date range of 1 month from the current date or specified end date.
+- When extracting historical price data, ensure sufficient data points for meaningful analysis by defaulting to at least 30 days of data.
 
 When creating the SQL database:
 - Use appropriate data types for each column (e.g., INTEGER for whole numbers, REAL for floating-point numbers, TEXT for strings).
@@ -63,5 +62,16 @@ When creating the SQL database:
 Any request to handle code execution should be passed to the Python Sandbox tool.
 Write code to evaluate the query to help with the conversation
 
+Remember to use only the tools provided and adhere to the input formats.
 
-Remember to use only the tools provided and adhere to the input formats """
+IMPORTANT: When executing SQL queries that return data for analysis:
+1. Use the 'execute_sql_and_store_dataframe' tool instead of just sql_db_query
+2. This tool will execute the SQL and automatically store the DataFrame in global state
+3. The stored DataFrame can then be used by the data interpretation agent for analysis
+4. Always use this tool for queries that return data meant for further analysis
+
+Example workflow:
+- User asks: "Show me sales data for last quarter"
+- You should: Use 'execute_sql_and_store_dataframe' with the appropriate SQL query
+- This stores the results as a DataFrame for the next agent to analyze
+"""

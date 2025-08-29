@@ -10,20 +10,13 @@ from langgraph_supervisor import create_supervisor
 from pydantic import BaseModel, Field
 
 from src.agents import DataManager, DataPrepAgent, InterpreterAgent
+from src.agents.data_interpreter.agent import DataInterpretationAgent
 from src.config import DEBUG, DEFAULT_MODEL_NAME, DEFAULT_TEMPERATURE
 from src.core import AgentResult, AgentType, BaseAgent, GlobalState
 
 from .prompts import SUPERVISOR_PROMPT
 
 load_dotenv()
-
-# TODO:
-# Initiate flow to read data better
-# Update global state with tool calls
-# Update explored queries and sql ran and tables selected
-# Use sandbox for python manipulation
-# How to debug the internals of the data agent from a supervisor call
-# Streaming output
 
 
 class FinalResponse(BaseModel):
@@ -41,7 +34,6 @@ class FinalResponse(BaseModel):
 class Supervisor(BaseAgent):
     """Supervisor Agent responsible for coordinating all tasks."""
 
-    # Class-level defaults; can be overridden via config
     MAX_HISTORY_MESSAGES_DEFAULT = 10
     MAX_MESSAGE_LENGTH_DEFAULT = 5000
     MAX_GLOBAL_HISTORY_DEFAULT = 20
@@ -69,7 +61,6 @@ class Supervisor(BaseAgent):
         self.global_state = global_state
         self.data_manager = data_manager
 
-        # Resolve limits from config (if provided), fallback to defaults
         cfg = {}
         try:
             cfg = (self.config or {}).get("configurable", {})  # type: ignore[union-attr]
@@ -110,17 +101,30 @@ class Supervisor(BaseAgent):
             logger=self.logger,
         )
 
+        # NEW: Add Data Interpretation Agent
+        data_interpretation_agent = DataInterpretationAgent(
+            name="data_interpretation",
+            global_state=self.global_state,
+            local_state=self.local_state,
+            config=self.config,
+            logger=self.logger,
+        )
+
         agent_workflows = [
             interpreter_agent.workflow,
             data_prep_agent.workflow,
+            data_interpretation_agent.workflow,
         ]
-        agents_label = ["interpreter", "data_prep"]
+        agents_label = [
+            "interpreter",
+            "data_prep",
+            "data_interpretation",
+        ]
 
         model = self.config.get("configurable", {}).get("model")
         query = self.global_state.get("user_query", None)
 
         if model is None:
-            # Try to create model using API key from config/centralized config
             api_key = self.config.get("configurable", {}).get("api_key")
             if api_key:
                 try:
@@ -143,10 +147,12 @@ class Supervisor(BaseAgent):
                 self.workflow = None
                 return
 
+        updated_supervisor_prompt = SUPERVISOR_PROMPT
+
         supervisor = create_supervisor(
             agents=agent_workflows,
             model=model,
-            prompt=SUPERVISOR_PROMPT.format(
+            prompt=updated_supervisor_prompt.format(
                 AGENTS=f"Available agents: {', '.join(agents_label)}",
                 QUERY=query,
             ),
@@ -158,8 +164,6 @@ class Supervisor(BaseAgent):
             output_mode="full_history",
         )
 
-        # Compile with in-memory saver; switch to persistent saver
-        # in deployment
         self.workflow = supervisor.compile(
             checkpointer=InMemorySaver(),
         )
@@ -191,25 +195,19 @@ class Supervisor(BaseAgent):
                 metadata={"agent_name": self.name},
             )
 
-        # Get conversation history from global state
         conversation_history = self.global_state.get("conversation_history", [])
 
-        # Clean up global state conversation history to prevent memory bloat
         self._cleanup_conversation_history()
 
-        # Prepare messages for workflow - limit history to prevent tokens
-        # Keep only the last few messages to stay within token limits
         filtered_history = []
         for msg in conversation_history[-self.MAX_HISTORY_MESSAGES :]:
             content = str(getattr(msg, "content", ""))
             has_content = bool(content)
             content_too_long = len(content) > self.MAX_MESSAGE_LENGTH
             if has_content and content_too_long:
-                # Truncate long messages
                 truncated_content = (
                     content[: self.MAX_MESSAGE_LENGTH] + "... [truncated]"
                 )
-                # Create new message with truncated content
                 if hasattr(msg, "type"):
                     if msg.type == "human":
                         truncated_msg = HumanMessage(content=truncated_content)
@@ -221,10 +219,8 @@ class Supervisor(BaseAgent):
             else:
                 filtered_history.append(msg)
 
-        # Prepare messages for workflow
         messages = filtered_history.copy()
 
-        # Truncate current query if too long
         current_query = query
         if len(query) > self.MAX_MESSAGE_LENGTH:
             current_query = query[: self.MAX_MESSAGE_LENGTH] + "... [truncated]"
@@ -246,7 +242,6 @@ class Supervisor(BaseAgent):
             print("Streaming not fully implemented yet.")
             response = None
 
-        # Debugging output
         if DEBUG:
             self.debug_workflow()
 
@@ -264,7 +259,6 @@ class Supervisor(BaseAgent):
         """Validate the input configuration for the agent."""
         if not self.config:
             raise ValueError("Configuration is required for Supervisor Agent.")
-        # Model can be None for testing without API key
         self.log_activity("Input validation completed successfully.")
 
     def _cleanup_conversation_history(self) -> None:
@@ -272,7 +266,6 @@ class Supervisor(BaseAgent):
         conversation_history = self.global_state.get("conversation_history", [])
 
         if len(conversation_history) > self.MAX_GLOBAL_HISTORY:
-            # Keep only the most recent messages
             trimmed_history = conversation_history[-self.MAX_GLOBAL_HISTORY :]
             self.global_state["conversation_history"] = trimmed_history
             self.log_activity(
@@ -302,19 +295,15 @@ class Supervisor(BaseAgent):
 
     def debug_workflow(self) -> None:
         """Debug the workflow by printing its structure."""
-        # Enhanced debugging: Access checkpointer state if available
         print("\n=== SUPERVISOR WORKFLOW DEBUG ===")
         print(f"Workflow type: {type(self.workflow)}")
 
-        # Try to access checkpointer state
         checkpointer = getattr(self.workflow, "checkpointer", None)
         if checkpointer is not None:
             print(f"Checkpointer type: {type(checkpointer)}")
             print(f"Checkpointer available: {checkpointer is not None}")
 
-            # Try to get checkpoint data
             try:
-                # For InMemorySaver, we might need to access internal storage
                 if hasattr(checkpointer, "storage"):
                     keys = (
                         list(checkpointer.storage.keys())
@@ -323,13 +312,11 @@ class Supervisor(BaseAgent):
                     )
                     print(f"Checkpointer storage keys: {keys}")
 
-                    # Print checkpoint data for debugging
                     for key, checkpoint_data in checkpointer.storage.items():
                         print(f"Checkpoint {key}: {type(checkpoint_data)}")
                         if hasattr(checkpoint_data, "channel_values"):
                             ch_vals = checkpoint_data.channel_values
                             print(f"  Channel values: {ch_vals.keys()}")
-                            # Look for messages in the checkpoint
                             if "messages" in ch_vals:
                                 checkpoint_messages = ch_vals["messages"]
                                 print(
